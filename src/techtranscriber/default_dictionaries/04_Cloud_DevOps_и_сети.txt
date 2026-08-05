@@ -1,0 +1,98 @@
+Docker
+Docker Compose
+контейнер
+контейнеризация
+Dockerfile
+образ контейнера
+container image
+registry
+Kubernetes
+Kubernetes cluster
+кубернетес
+pod
+namespace
+deployment
+service mesh
+ingress
+ingress controller
+Helm
+Helm chart
+OpenShift
+Rancher
+Terraform
+Ansible
+Infrastructure as Code
+IaC
+виртуальная машина
+гипервизор
+сервер
+облачный сервер
+локальный сервер
+выделенный сервер
+VPS
+VDS
+AWS
+Amazon Web Services
+Microsoft Azure
+Google Cloud
+Yandex Cloud
+S3
+объектное хранилище
+файловое хранилище
+CDN
+DNS
+DHCP
+IP-адрес
+IPv4
+IPv6
+TCP/IP
+TCP
+UDP
+порт
+домен
+поддомен
+хост
+localhost
+VPN
+NAT
+firewall
+межсетевой экран
+маршрутизатор
+маршрутизация
+сетевой интерфейс
+пропускная способность
+задержка
+latency
+Git
+GitHub
+GitLab
+Bitbucket
+ветка
+branch
+commit
+merge
+merge request
+pull request
+code review
+конфликт слияния
+клонирование
+форк
+тег
+CI/CD
+Continuous Integration
+Continuous Delivery
+pipeline
+GitLab CI
+GitHub Actions
+Jenkins
+TeamCity
+artifact
+артефакт сборки
+Nexus
+Artifactory
+npm
+yarn
+pnpm
+Maven
+Gradle
+

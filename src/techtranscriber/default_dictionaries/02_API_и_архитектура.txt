@@ -1,0 +1,72 @@
+API
+REST API
+GraphQL
+WebSocket
+Webhook
+gRPC
+SOAP
+JSON
+XML
+YAML
+CSV
+HTTP
+HTTPS
+HTTP-запрос
+GET-запрос
+POST-запрос
+PUT-запрос
+PATCH-запрос
+DELETE-запрос
+endpoint
+API endpoint
+request
+response
+payload
+header
+body
+query parameter
+status code
+token
+access token
+refresh token
+API-ключ
+сессия
+cookie
+кэш
+кэширование
+идемпотентность
+idempotency key
+pagination
+пагинация
+rate limit
+лимит запросов
+timeout
+таймаут
+retry
+повторный запрос
+callback
+SDK
+contract-first
+OpenAPI
+Swagger
+Postman
+Insomnia
+сериализация
+десериализация
+API versioning
+версионирование API
+service discovery
+health check
+circuit breaker
+distributed tracing
+корреляционный идентификатор
+correlation ID
+message broker
+event bus
+event sourcing
+CQRS
+domain-driven design
+DDD
+bounded context
+domain model
+

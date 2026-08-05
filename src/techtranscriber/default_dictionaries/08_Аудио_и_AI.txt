@@ -1,0 +1,61 @@
+WASAPI
+WASAPI Loopback
+микрофон
+системный звук
+аудиопоток
+частота дискретизации
+битрейт
+кодек
+PCM
+WAV
+MP3
+AAC
+Opus
+WebRTC
+Whisper
+faster-whisper
+Whisper Small
+Whisper Medium
+Whisper Large-v3
+SpeechBrain
+ECAPA-TDNN
+транскрибация
+распознавание речи
+диаризация
+разделение спикеров
+голосовой отпечаток
+speaker identification
+speaker diarization
+нейронная сеть
+машинное обучение
+искусственный интеллект
+AI
+ML
+LLM
+локальная модель
+модель распознавания
+инференс
+промпт
+контекст
+токенизация
+векторное представление
+эмбеддинг
+cosine similarity
+порог сходства
+speech-to-text
+STT
+text-to-speech
+TTS
+voice activity detection
+VAD
+voice embedding
+audio channel
+моно
+стерео
+шумоподавление
+эхоподавление
+automatic gain control
+AGC
+latency
+real-time transcription
+

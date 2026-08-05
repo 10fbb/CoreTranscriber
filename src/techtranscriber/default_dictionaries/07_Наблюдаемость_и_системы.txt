@@ -1,0 +1,67 @@
+логирование
+лог
+журнал событий
+мониторинг
+метрика
+трассировка
+observability
+OpenTelemetry
+Prometheus
+Grafana
+Kibana
+Sentry
+Zabbix
+Jaeger
+SLA
+SLO
+SLI
+uptime
+downtime
+инцидент
+постмортем
+критическая ошибка
+производительность
+оптимизация
+профилирование
+утечка памяти
+оперативная память
+RAM
+центральный процессор
+CPU
+графический процессор
+GPU
+NVIDIA
+CUDA
+VRAM
+дисковое пространство
+SSD
+HDD
+операционная система
+Windows
+Windows 10
+Windows 11
+Linux
+Ubuntu
+macOS
+log level
+debug level
+warning
+error rate
+throughput
+RPS
+requests per second
+APM
+Application Performance Monitoring
+alert
+оповещение
+дашборд мониторинга
+health status
+readiness probe
+liveness probe
+root cause analysis
+RCA
+mean time to recovery
+MTTR
+mean time between failures
+MTBF
+

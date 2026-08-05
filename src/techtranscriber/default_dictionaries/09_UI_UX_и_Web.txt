@@ -1,0 +1,94 @@
+UI
+UX
+UI/UX
+пользовательский интерфейс
+пользовательский опыт
+дизайн-система
+вариант компонента
+Auto Layout
+автолейаут
+фрейм
+слой
+макет
+прототип
+интерактивный прототип
+адаптив
+адаптивный дизайн
+responsive design
+desktop
+tablet
+mobile
+breakpoint
+брейкпоинт
+viewport
+разрешение экрана
+сеточная система
+grid
+flexbox
+контейнер
+отступ
+padding
+margin
+gap
+типографика
+шрифт
+начертание
+межстрочный интервал
+контрастность
+доступность
+accessibility
+WCAG
+хедер
+header
+footer
+sidebar
+navigation
+навигация
+модальное окно
+popup
+tooltip
+dropdown
+checkbox
+radio button
+input
+textarea
+button
+CTA
+баннер
+landing page
+лендинг
+личный кабинет
+дашборд
+dashboard
+карточка
+форма
+валидация
+маска ввода
+состояние компонента
+hover
+focus
+active
+disabled
+SVG
+PNG
+JPEG
+WebP
+растровая графика
+векторная графика
+прозрачный фон
+alpha channel
+оптимизация изображений
+lazy loading
+SEO
+метатег
+семантическая разметка
+schema.org
+аналитика
+Яндекс Метрика
+Google Analytics
+Google Tag Manager
+событие аналитики
+конверсия
+воронка
+A/B-тестирование
+

@@ -1,0 +1,64 @@
+техническое задание
+ТЗ
+бизнес-требование
+функциональное требование
+нефункциональное требование
+acceptance criteria
+критерий приёмки
+user story
+пользовательский сценарий
+use case
+MVP
+Proof of Concept
+PoC
+прототип
+итерация
+спринт
+Scrum
+Kanban
+Agile
+Waterfall
+backlog
+бэклог
+roadmap
+дорожная карта
+задача
+подзадача
+эпик
+приоритет
+дедлайн
+оценка трудозатрат
+релизный цикл
+технический долг
+legacy
+обратная совместимость
+stakeholder
+стейкхолдер
+product owner
+владелец продукта
+project manager
+руководитель проекта
+business analyst
+бизнес-аналитик
+system analyst
+системный аналитик
+solution architect
+архитектор решения
+definition of done
+definition of ready
+planning
+планирование
+retrospective
+ретроспектива
+daily meeting
+демонстрация
+release notes
+change request
+запрос на изменение
+risk register
+реестр рисков
+dependency
+зависимость задачи
+milestone
+контрольная точка
+

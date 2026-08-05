@@ -1,0 +1,67 @@
+авторизация
+аутентификация
+идентификация
+OAuth
+OAuth 2.0
+OpenID Connect
+OIDC
+JWT
+SSO
+MFA
+двухфакторная аутентификация
+RBAC
+ACL
+роль пользователя
+права доступа
+SSL
+TLS
+SSL-сертификат
+цифровой сертификат
+шифрование
+хеширование
+SHA-256
+AES
+RSA
+секретный ключ
+публичный ключ
+приватный ключ
+уязвимость
+эксплойт
+информационная безопасность
+персональные данные
+шифрование данных
+резервное копирование
+backup
+восстановление данных
+секрет
+secret management
+Vault
+KMS
+Key Management Service
+WAF
+Web Application Firewall
+DDoS
+SQL injection
+XSS
+CSRF
+CORS
+OWASP
+OWASP Top Ten
+penetration testing
+пентест
+security audit
+аудит безопасности
+SIEM
+SOC
+DLP
+EDR
+антивирус
+zero trust
+принцип наименьших привилегий
+least privilege
+service account
+учётная запись сервиса
+ротация ключей
+credential
+учётные данные
+

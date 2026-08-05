@@ -1,0 +1,68 @@
+RabbitMQ
+Apache Kafka
+Redis
+Elasticsearch
+OpenSearch
+ClickHouse
+PostgreSQL
+MySQL
+MariaDB
+Microsoft SQL Server
+SQLite
+MongoDB
+NoSQL
+SQL
+база данных
+схема данных
+таблица
+колонка
+строка
+первичный ключ
+внешний ключ
+индекс
+индексация
+транзакция
+ACID
+миграция базы данных
+репликация
+шардинг
+кластер
+запрос к базе данных
+хранимая процедура
+ORM
+connection pool
+пул соединений
+deadlock
+взаимная блокировка
+normalization
+нормализация
+denormalization
+денормализация
+data warehouse
+хранилище данных
+data lake
+витрина данных
+ETL
+ELT
+CDC
+Change Data Capture
+master data
+справочник
+очередь
+topic
+partition
+consumer
+producer
+consumer group
+offset
+dead letter queue
+DLQ
+event
+событие
+message
+сообщение
+schema registry
+Avro
+Protocol Buffers
+Protobuf
+

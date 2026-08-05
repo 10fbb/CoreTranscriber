@@ -1,0 +1,79 @@
+Python
+Java
+JavaScript
+TypeScript
+C#
+C++
+.NET
+Go
+Golang
+Rust
+PHP
+Kotlin
+Swift
+HTML
+HTML5
+CSS
+CSS3
+Sass
+SCSS
+React
+React Native
+Next.js
+Vue.js
+Nuxt
+Angular
+Node.js
+Express.js
+NestJS
+Spring Boot
+Django
+Flask
+FastAPI
+Laravel
+WordPress
+unit-тест
+модульное тестирование
+интеграционное тестирование
+регрессионное тестирование
+нагрузочное тестирование
+автоматизированное тестирование
+ручное тестирование
+end-to-end
+E2E
+smoke test
+тест-кейс
+чек-лист
+баг
+bug
+дефект
+ошибка
+исключение
+exception
+stack trace
+debug
+отладка
+точка останова
+mock
+stub
+fixture
+test coverage
+покрытие тестами
+acceptance testing
+приёмочное тестирование
+performance testing
+stress testing
+quality assurance
+QA
+unit of work
+dependency injection
+инверсия управления
+SOLID
+clean architecture
+clean code
+design pattern
+паттерн проектирования
+singleton
+factory
+repository pattern
+
