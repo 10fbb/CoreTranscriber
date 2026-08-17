@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -10,10 +11,38 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from techtranscriber.config import load_settings
+from techtranscriber import __version__
+from techtranscriber.config import app_data_dir, default_output_root, load_settings
 
 
 class ConfigTests(unittest.TestCase):
+    def test_fresh_install_uses_coretranscriber_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            local_app_data = Path(temp) / "LocalAppData"
+            documents_home = Path(temp) / "User"
+            with patch.dict(os.environ, {"LOCALAPPDATA": str(local_app_data)}):
+                self.assertEqual(
+                    app_data_dir(), local_app_data / "CoreTranscriber"
+                )
+            with patch(
+                "techtranscriber.config.Path.home", return_value=documents_home
+            ):
+                self.assertEqual(
+                    default_output_root(),
+                    documents_home / "Documents" / "CoreTranscriber",
+                )
+
+    def test_legacy_app_data_is_reused_after_update(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            local_app_data = Path(temp)
+            legacy = local_app_data / "TechTranscriber"
+            legacy.mkdir()
+            with patch.dict(os.environ, {"LOCALAPPDATA": str(local_app_data)}):
+                self.assertEqual(app_data_dir(), legacy)
+
+    def test_version_is_0_3_1(self) -> None:
+        self.assertEqual(__version__, "0.3.1")
+
     def test_existing_cpu_install_migrates_from_medium_to_base_once(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "settings.json"

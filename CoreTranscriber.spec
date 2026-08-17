@@ -28,7 +28,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="TechTranscriber",
+    name="CoreTranscriber",
     console=False,
     disable_windowed_traceback=False,
 )
@@ -38,5 +38,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=True,
-    name="TechTranscriber",
+    name="CoreTranscriber",
 )

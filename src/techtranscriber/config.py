@@ -10,13 +10,16 @@ from .models import AppSettings
 
 def app_data_dir() -> Path:
     base = Path(os.environ.get("LOCALAPPDATA", Path.home() / ".techtranscriber"))
-    path = base / "TechTranscriber"
+    path = base / "CoreTranscriber"
+    legacy_path = base / "TechTranscriber"
+    if not path.exists() and legacy_path.exists():
+        return legacy_path
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def default_output_root() -> Path:
-    path = Path.home() / "Documents" / "ТехСтенограмма"
+    path = Path.home() / "Documents" / "CoreTranscriber"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
