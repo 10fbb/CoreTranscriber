@@ -82,7 +82,7 @@ class MainWindow(QMainWindow):
         self._refresh_dictionaries()
 
     def _build_ui(self) -> None:
-        self.setWindowTitle("ТехСтенограмма — локальная транскрибация")
+        self.setWindowTitle("CoreTranscriber — локальная транскрибация")
         self.resize(1280, 820)
         root = QWidget()
         self.setCentralWidget(root)
@@ -92,7 +92,7 @@ class MainWindow(QMainWindow):
 
         header = QHBoxLayout()
         title_box = QVBoxLayout()
-        title = QLabel("ТехСтенограмма")
+        title = QLabel("CoreTranscriber")
         title.setObjectName("appTitle")
         subtitle = QLabel("Локально · без API‑ключей · аудио остаётся на компьютере")
         subtitle.setObjectName("subtitle")
@@ -596,7 +596,7 @@ class MainWindow(QMainWindow):
 
     def _show_error(self, message: str) -> None:
         self.status_label.setText(message)
-        QMessageBox.warning(self, "ТехСтенограмма", message)
+        QMessageBox.warning(self, "CoreTranscriber", message)
 
     def closeEvent(self, event) -> None:
         if self.pipeline and self.pipeline.running:
@@ -646,8 +646,8 @@ def _section(text: str) -> QLabel:
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName("ТехСтенограмма")
-    app.setOrganizationName("Local")
+    app.setApplicationName("CoreTranscriber")
+    app.setOrganizationName("CoreTranscriber")
     window = MainWindow()
     window.show()
     return app.exec()

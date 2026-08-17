@@ -8,12 +8,11 @@ if not exist ".venv\Scripts\python.exe" (
 )
 call ".venv\Scripts\activate.bat"
 python -m pip install pyinstaller
-pyinstaller --noconfirm TechTranscriber.spec
+pyinstaller --noconfirm CoreTranscriber.spec
 if errorlevel 1 (
   echo Сборка не удалась.
   pause
   exit /b 1
 )
-echo Готово: dist\TechTranscriber\TechTranscriber.exe
+echo Готово: dist\CoreTranscriber\CoreTranscriber.exe
 pause
-
