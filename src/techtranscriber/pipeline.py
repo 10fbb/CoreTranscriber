@@ -16,6 +16,9 @@ from .transcriber import LocalWhisper
 
 
 class MeetingPipeline:
+    BACKLOG_WARNING_UTTERANCES = 20
+    BACKLOG_STATUS_INTERVAL_SECONDS = 30.0
+
     def __init__(
         self,
         settings: AppSettings,
@@ -43,7 +46,9 @@ class MeetingPipeline:
             model_cache_dir(), settings.speaker_threshold, on_status=on_status
         )
         self._speaker_names: dict[str, str] = {}
-        self._queue: queue.Queue[Utterance | None] = queue.Queue(maxsize=100)
+        # Audio is always written to disk first. The in-memory queue is deliberately
+        # unbounded so a temporary CPU slowdown never discards transcript segments.
+        self._queue: queue.Queue[Utterance | None] = queue.Queue()
         self._captures: list[CaptureWorker] = []
         self._segmenters: dict[AudioSource, SpeechSegmenter] = {}
         self._processor: threading.Thread | None = None
@@ -51,6 +56,7 @@ class MeetingPipeline:
         self._running = False
         self._started_at = 0.0
         self._wall_started_at = datetime.now()
+        self._last_backlog_status_at = 0.0
 
     @property
     def session_directory(self) -> Path | None:
@@ -140,10 +146,19 @@ class MeetingPipeline:
         self._segmenters[packet.source].accept(packet)
 
     def _enqueue(self, utterance: Utterance) -> None:
-        try:
-            self._queue.put(utterance, timeout=1.0)
-        except queue.Full:
-            self.on_error("Очередь распознавания переполнена. Выберите модель поменьше.")
+        self._queue.put_nowait(utterance)
+        pending = self._queue.qsize()
+        now = time.monotonic()
+        if (
+            pending >= self.BACKLOG_WARNING_UTTERANCES
+            and now - self._last_backlog_status_at
+            >= self.BACKLOG_STATUS_INTERVAL_SECONDS
+        ):
+            self._last_backlog_status_at = now
+            self.on_status(
+                "Распознавание немного отстаёт; аудио сохраняется, "
+                f"в очереди {pending} фрагментов"
+            )
 
     def _process_loop(self) -> None:
         try:

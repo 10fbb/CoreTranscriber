@@ -49,7 +49,7 @@ class TranscriptEntry:
 class AppSettings:
     microphone_id: str = ""
     speaker_id: str = ""
-    whisper_model: str = "small"
+    whisper_model: str = "base"
     language: str = "ru"
     glossary: list[str] = field(default_factory=list)
     active_dictionaries: list[str] = field(
@@ -58,3 +58,4 @@ class AppSettings:
     energy_threshold: float = 0.008
     speaker_threshold: float = 0.67
     output_root: Path | None = None
+    settings_revision: int = 2
