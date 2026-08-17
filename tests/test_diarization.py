@@ -39,7 +39,19 @@ class DiarizationTests(unittest.TestCase):
             self.assertEqual(clusterer.identify(audio), "remote-1")
             self.assertEqual(clusterer.identify(audio), "remote-2")
 
+    def test_tracks_five_distinct_remote_speakers(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            embeddings = [np.eye(5, dtype=np.float32)[index] for index in range(5)]
+            clusterer = FakeClusterer(Path(temp), embeddings)
+            audio = np.ones(16_000, dtype=np.float32)
+
+            speakers = [clusterer.identify(audio) for _ in range(5)]
+
+            self.assertEqual(
+                speakers,
+                ["remote-1", "remote-2", "remote-3", "remote-4", "remote-5"],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
-

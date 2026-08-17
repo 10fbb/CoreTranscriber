@@ -21,7 +21,7 @@ class DictionaryTests(unittest.TestCase):
             manager.save(first, "API\nREST API\nAPI\n")
             manager.save(second, "эквайринг\nPAN\n")
             terms = manager.combine([first, second], ["Dion", "API"])
-            self.assertEqual(terms, ["Dion", "API", "REST API", "эквайринг", "PAN"])
+            self.assertEqual(terms, ["Dion", "API", "эквайринг", "REST API", "PAN"])
             manager.delete(first)
             self.assertFalse((Path(temp) / first).exists())
 
@@ -47,6 +47,23 @@ class DictionaryTests(unittest.TestCase):
                 manager.delete(acquiring)
                 DictionaryManager(root / "Словари")
                 self.assertFalse((root / "Словари" / acquiring).exists())
+
+    def test_prompt_terms_prioritize_extras_and_balance_dictionaries(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            manager = DictionaryManager(Path(temp), install_defaults=False)
+            first = manager.create("Первый")
+            second = manager.create("Второй")
+            manager.save(first, "API\nPostgreSQL\nKubernetes\n")
+            manager.save(second, "эквайринг\nпроцессинг\nСБП\n")
+
+            terms = manager.combine(
+                [first, second], ["Dion"], max_terms=5
+            )
+
+            self.assertEqual(
+                terms,
+                ["Dion", "API", "эквайринг", "PostgreSQL", "процессинг"],
+            )
 
 
 if __name__ == "__main__":

@@ -37,6 +37,14 @@ def load_settings() -> AppSettings:
         return AppSettings(output_root=default_output_root())
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
+        revision = int(payload.get("settings_revision", 1))
+        if revision < 2 and payload.get("whisper_model") in {
+            "small",
+            "medium",
+            "large-v3",
+        }:
+            payload["whisper_model"] = "base"
+        payload["settings_revision"] = 2
         output = payload.get("output_root")
         payload["output_root"] = Path(output) if output else default_output_root()
         return AppSettings(**payload)
@@ -50,4 +58,3 @@ def save_settings(settings: AppSettings) -> None:
     settings_path().write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-

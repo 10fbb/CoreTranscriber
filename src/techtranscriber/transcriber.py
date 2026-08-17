@@ -1,10 +1,29 @@
 from __future__ import annotations
 
+import os
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+
+MAX_HOTWORDS = 200
+
+
+@dataclass(frozen=True, slots=True)
+class TimedText:
+    text: str
+    start_seconds: float
+    duration_seconds: float
+
+
+def recommended_cpu_threads(logical_cpu_count: int | None = None) -> int:
+    """Leave headroom for audio capture and the UI on CPU-only computers."""
+    available = logical_cpu_count or os.cpu_count() or 4
+    if available <= 2:
+        return max(1, available)
+    return max(2, min(8, available - 2))
 
 
 class LocalWhisper:
@@ -38,14 +57,26 @@ class LocalWhisper:
                 use_cuda = bool(torch.cuda.is_available())
                 device = "cuda" if use_cuda else "cpu"
                 compute_type = "float16" if use_cuda else "int8"
+                model_options = {}
+                if not use_cuda:
+                    model_options["cpu_threads"] = recommended_cpu_threads()
+                    model_options["num_workers"] = 1
                 self._model = WhisperModel(
                     self.model_name,
                     device=device,
                     compute_type=compute_type,
                     download_root=str(self.cache_dir / "whisper"),
+                    **model_options,
                 )
                 target = "видеокарта" if use_cuda else "процессор"
-                self.on_status(f"Whisper готов: {self.model_name}, {target}")
+                detail = (
+                    ""
+                    if use_cuda
+                    else f", {model_options['cpu_threads']} потоков, int8"
+                )
+                self.on_status(
+                    f"Whisper готов: {self.model_name}, {target}{detail}"
+                )
             except Exception:
                 self._model = None
                 raise
@@ -56,23 +87,55 @@ class LocalWhisper:
         segments, _ = self._model.transcribe(
             np.asarray(samples, dtype=np.float32),
             language=self.language,
-            beam_size=5,
-            best_of=5,
+            beam_size=1,
+            best_of=1,
             temperature=0.0,
             condition_on_previous_text=False,
             initial_prompt=prompt or None,
             hotwords=self._hotwords() or None,
-            vad_filter=True,
-            vad_parameters={"min_silence_duration_ms": 350},
+            without_timestamps=True,
+            vad_filter=False,
         )
         parts = [segment.text.strip() for segment in segments if segment.text.strip()]
         return " ".join(parts).strip()
 
+    def transcribe_file(self, path: Path) -> list[TimedText]:
+        """Produce a higher-quality timestamped transcript from saved audio."""
+        self.load()
+        segments, _ = self._model.transcribe(
+            str(path),
+            language=self.language,
+            beam_size=5,
+            best_of=5,
+            temperature=0.0,
+            condition_on_previous_text=False,
+            initial_prompt=self._prompt(),
+            hotwords=self._hotwords() or None,
+            without_timestamps=False,
+            vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 350},
+        )
+        result: list[TimedText] = []
+        for segment in segments:
+            text = segment.text.strip()
+            if not text:
+                continue
+            start = max(0.0, float(segment.start))
+            end = max(start, float(segment.end))
+            result.append(TimedText(text, start, end - start))
+        return result
+
     def _prompt(self) -> str:
-        return "Техническое совещание на русском языке."
+        return (
+            "Техническое совещание на русском языке. "
+            "Участвуют несколько специалистов. Используются точные названия "
+            "продуктов, систем, протоколов, аббревиатур и англоязычных технологий."
+        )
 
     def _hotwords(self) -> str:
-        terms = [term.strip() for term in self.glossary if term.strip()]
+        terms = [term.strip() for term in self.glossary if term.strip()][
+            :MAX_HOTWORDS
+        ]
         return ", ".join(terms)
 
 

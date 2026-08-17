@@ -12,6 +12,7 @@ from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -37,7 +38,7 @@ from PySide6.QtWidgets import (
 
 from .audio import DeviceService
 from .config import default_output_root, load_settings, model_cache_dir, save_settings
-from .dictionaries import DictionaryManager
+from .dictionaries import MAX_PROMPT_TERMS, DictionaryManager
 from .dictionary_ui import DictionaryEditorDialog
 from .models import AppSettings, DeviceInfo, TranscriptEntry
 from .pipeline import MeetingPipeline
@@ -48,6 +49,7 @@ ENTRY_ID_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 
 class UiBridge(QObject):
     entry = Signal(object)
+    reset_entries = Signal()
     status = Signal(str)
     error = Signal(str)
     stopped = Signal()
@@ -66,6 +68,7 @@ class MainWindow(QMainWindow):
         self.elapsed_seconds = 0
         self.bridge = UiBridge()
         self.bridge.entry.connect(self._append_entry)
+        self.bridge.reset_entries.connect(lambda: self.table.setRowCount(0))
         self.bridge.status.connect(self._set_status)
         self.bridge.error.connect(self._show_error)
         self.bridge.stopped.connect(self._after_stop)
@@ -124,10 +127,22 @@ class MainWindow(QMainWindow):
         self.speaker_combo = QComboBox()
         form.addRow("Звук приложений", self.speaker_combo)
         self.model_combo = QComboBox()
-        for model in ("tiny", "small", "medium", "large-v3"):
-            self.model_combo.addItem(model, model)
-        self.model_combo.setCurrentText(self.settings.whisper_model)
-        self.model_combo.currentTextChanged.connect(self._model_selection_changed)
+        model_options = (
+            ("tiny", "tiny — максимальная скорость"),
+            ("base", "base — рекомендуется для CPU"),
+            ("small", "small — точнее, но медленнее"),
+            ("medium", "medium — не для живой записи на CPU"),
+            ("large-v3", "large-v3 — рекомендуется NVIDIA GPU"),
+        )
+        for model, label in model_options:
+            self.model_combo.addItem(label, model)
+        selected_model = self.model_combo.findData(self.settings.whisper_model)
+        self.model_combo.setCurrentIndex(max(0, selected_model))
+        self.model_combo.currentIndexChanged.connect(
+            lambda index: self._model_selection_changed(
+                str(self.model_combo.itemData(index))
+            )
+        )
         form.addRow("Модель", self.model_combo)
         settings_layout.addLayout(form)
 
@@ -135,6 +150,17 @@ class MainWindow(QMainWindow):
         self.download_model_button.setObjectName("secondary")
         self.download_model_button.clicked.connect(self._prepare_model)
         settings_layout.addWidget(self.download_model_button)
+
+        self.refine_after_recording = QCheckBox(
+            "После остановки уточнить итог моделью medium"
+        )
+        self.refine_after_recording.setChecked(
+            self.settings.refine_after_recording
+        )
+        self.refine_after_recording.setToolTip(
+            "Живая стенограмма base сохранится, пока medium не завершит обработку"
+        )
+        settings_layout.addWidget(self.refine_after_recording)
 
         refresh = QPushButton("Обновить список устройств")
         refresh.setObjectName("secondary")
@@ -291,9 +317,16 @@ class MainWindow(QMainWindow):
             for line in self.glossary.toPlainText().splitlines()
             if line.strip()
         ]
-        total = len(self.dictionary_manager.combine(names, extra))
-        suffix = " · максимум 1500" if total >= 1500 else ""
-        self.dictionary_count.setText(f"{total} терминов{suffix}")
+        selected = len(self.dictionary_manager.combine(names, extra))
+        available = len(
+            self.dictionary_manager.combine(names, extra, max_terms=100_000)
+        )
+        if available > MAX_PROMPT_TERMS:
+            self.dictionary_count.setText(
+                f"{selected} из {available} терминов используются"
+            )
+        else:
+            self.dictionary_count.setText(f"{selected} терминов")
 
     def _manage_dictionaries(self) -> None:
         active = self._active_dictionary_names()
@@ -398,6 +431,7 @@ class MainWindow(QMainWindow):
             energy_threshold=self.settings.energy_threshold,
             speaker_threshold=self.settings.speaker_threshold,
             output_root=Path(self.output_path.text()),
+            refine_after_recording=self.refine_after_recording.isChecked(),
         )
         save_settings(self.settings)
         combined_terms = self.dictionary_manager.combine(
@@ -414,6 +448,7 @@ class MainWindow(QMainWindow):
             self.bridge.status.emit,
             self.bridge.error.emit,
             transcriber=preloaded,
+            on_reset=self.bridge.reset_entries.emit,
         )
         try:
             self.pipeline.start()
@@ -465,6 +500,7 @@ class MainWindow(QMainWindow):
             self.download_model_button,
             self.dictionary_list,
             self.glossary,
+            self.refine_after_recording,
         ):
             widget.setEnabled(enabled)
 

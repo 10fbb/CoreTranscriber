@@ -59,6 +59,13 @@ class SessionWriter:
             self._entries.append(entry)
         self.export_text_files()
 
+    def replace_entries(self, entries: list[TranscriptEntry]) -> None:
+        with self._entry_lock:
+            self._entries = list(entries)
+        self.export_text_files()
+        if self._closed:
+            self.export_docx()
+
     def rename_speaker(self, speaker_id: str, role: str) -> None:
         with self._entry_lock:
             for entry in self._entries:

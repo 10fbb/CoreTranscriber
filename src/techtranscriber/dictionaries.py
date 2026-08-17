@@ -3,9 +3,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from importlib import resources
+from itertools import zip_longest
 from pathlib import Path
 
 from .config import app_data_dir, default_output_root
+
+MAX_PROMPT_TERMS = 200
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,18 +73,25 @@ class DictionaryManager:
         self,
         filenames: list[str],
         extra_terms: list[str] | None = None,
-        max_terms: int = 1500,
+        max_terms: int = MAX_PROMPT_TERMS,
     ) -> list[str]:
         combined: list[str] = []
         seen: set[str] = set()
-        sources = [extra_terms or []] + [self.load(name) for name in filenames]
-        for terms in sources:
-            for term in terms:
-                key = term.casefold()
-                if key not in seen:
-                    seen.add(key)
-                    combined.append(term)
-                if len(combined) >= max_terms:
+        def append(term: str) -> bool:
+            key = term.casefold()
+            if key not in seen:
+                seen.add(key)
+                combined.append(term)
+            return len(combined) >= max_terms
+
+        for term in _clean_terms(extra_terms or []):
+            if append(term):
+                return combined
+
+        dictionary_terms = [self.load(name) for name in filenames]
+        for group in zip_longest(*dictionary_terms):
+            for term in group:
+                if term is not None and append(term):
                     return combined
         return combined
 

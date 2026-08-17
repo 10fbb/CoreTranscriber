@@ -52,7 +52,22 @@ class StorageTests(unittest.TestCase):
             self.assertTrue((writer.directory / "system_audio.wav").exists())
             self.assertTrue((writer.directory / "transcript.srt").exists())
 
+            refined = TranscriptEntry(
+                "system",
+                "Собеседник 2",
+                "Уточнённый технический текст",
+                2.0,
+                1.5,
+                "remote-2",
+                created_at=datetime(2026, 8, 5, 14, 30, 16),
+            )
+            writer.replace_entries([refined])
+            refined_text = (writer.directory / "transcript.txt").read_text(
+                encoding="utf-8"
+            )
+            self.assertNotIn("Исправленный REST API", refined_text)
+            self.assertIn("Уточнённый технический текст", refined_text)
+
 
 if __name__ == "__main__":
     unittest.main()
-
