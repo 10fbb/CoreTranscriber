@@ -1,4 +1,4 @@
-# LektonTranscriber для Windows
+# CoreTranscriber для Windows
 
 Локальное приложение для записи встреч и транскрибации без платного API.
 
