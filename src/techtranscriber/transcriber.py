@@ -3,11 +3,19 @@ from __future__ import annotations
 import os
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
 MAX_HOTWORDS = 200
+
+
+@dataclass(frozen=True, slots=True)
+class TimedText:
+    text: str
+    start_seconds: float
+    duration_seconds: float
 
 
 def recommended_cpu_threads(logical_cpu_count: int | None = None) -> int:
@@ -90,6 +98,32 @@ class LocalWhisper:
         )
         parts = [segment.text.strip() for segment in segments if segment.text.strip()]
         return " ".join(parts).strip()
+
+    def transcribe_file(self, path: Path) -> list[TimedText]:
+        """Produce a higher-quality timestamped transcript from saved audio."""
+        self.load()
+        segments, _ = self._model.transcribe(
+            str(path),
+            language=self.language,
+            beam_size=5,
+            best_of=5,
+            temperature=0.0,
+            condition_on_previous_text=False,
+            initial_prompt=self._prompt(),
+            hotwords=self._hotwords() or None,
+            without_timestamps=False,
+            vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 350},
+        )
+        result: list[TimedText] = []
+        for segment in segments:
+            text = segment.text.strip()
+            if not text:
+                continue
+            start = max(0.0, float(segment.start))
+            end = max(start, float(segment.end))
+            result.append(TimedText(text, start, end - start))
+        return result
 
     def _prompt(self) -> str:
         return (

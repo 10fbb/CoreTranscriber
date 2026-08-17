@@ -59,3 +59,4 @@ class AppSettings:
     speaker_threshold: float = 0.67
     output_root: Path | None = None
     settings_revision: int = 2
+    refine_after_recording: bool = True

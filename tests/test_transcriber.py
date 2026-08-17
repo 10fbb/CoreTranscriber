@@ -16,17 +16,20 @@ from techtranscriber.transcriber import LocalWhisper, recommended_cpu_threads
 
 
 class _Segment:
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, start: float = 0.0, end: float = 1.0) -> None:
         self.text = text
+        self.start = start
+        self.end = end
 
 
 class _RecordingModel:
-    def __init__(self) -> None:
+    def __init__(self, segments: list[_Segment] | None = None) -> None:
         self.options = {}
+        self.segments = segments or [_Segment(" REST API "), _Segment(" работает ")]
 
     def transcribe(self, samples, **options):
         self.options = options
-        return [_Segment(" REST API "), _Segment(" работает ")], object()
+        return self.segments, object()
 
 
 class TranscriberTests(unittest.TestCase):
@@ -83,6 +86,23 @@ class TranscriberTests(unittest.TestCase):
             self.assertEqual(
                 model.options["hotwords"], "REST API, PostgreSQL, Dion"
             )
+
+    def test_saved_audio_refinement_uses_medium_quality_options(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            transcriber = LocalWhisper("medium", Path(temp), glossary=["REST API"])
+            model = _RecordingModel([_Segment(" REST API работает ", 2.5, 4.0)])
+            transcriber._model = model
+
+            segments = transcriber.transcribe_file(Path(temp) / "system_audio.wav")
+
+            self.assertEqual(len(segments), 1)
+            self.assertEqual(segments[0].text, "REST API работает")
+            self.assertEqual(segments[0].start_seconds, 2.5)
+            self.assertEqual(segments[0].duration_seconds, 1.5)
+            self.assertEqual(model.options["beam_size"], 5)
+            self.assertEqual(model.options["best_of"], 5)
+            self.assertFalse(model.options["without_timestamps"])
+            self.assertTrue(model.options["vad_filter"])
 
 
 if __name__ == "__main__":

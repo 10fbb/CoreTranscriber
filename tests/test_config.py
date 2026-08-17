@@ -31,6 +31,7 @@ class ConfigTests(unittest.TestCase):
 
             self.assertEqual(settings.whisper_model, "base")
             self.assertEqual(settings.settings_revision, 2)
+            self.assertTrue(settings.refine_after_recording)
 
     def test_explicit_model_choice_is_preserved_after_migration(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

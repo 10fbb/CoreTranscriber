@@ -12,6 +12,7 @@ from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -48,6 +49,7 @@ ENTRY_ID_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 
 class UiBridge(QObject):
     entry = Signal(object)
+    reset_entries = Signal()
     status = Signal(str)
     error = Signal(str)
     stopped = Signal()
@@ -66,6 +68,7 @@ class MainWindow(QMainWindow):
         self.elapsed_seconds = 0
         self.bridge = UiBridge()
         self.bridge.entry.connect(self._append_entry)
+        self.bridge.reset_entries.connect(lambda: self.table.setRowCount(0))
         self.bridge.status.connect(self._set_status)
         self.bridge.error.connect(self._show_error)
         self.bridge.stopped.connect(self._after_stop)
@@ -147,6 +150,17 @@ class MainWindow(QMainWindow):
         self.download_model_button.setObjectName("secondary")
         self.download_model_button.clicked.connect(self._prepare_model)
         settings_layout.addWidget(self.download_model_button)
+
+        self.refine_after_recording = QCheckBox(
+            "После остановки уточнить итог моделью medium"
+        )
+        self.refine_after_recording.setChecked(
+            self.settings.refine_after_recording
+        )
+        self.refine_after_recording.setToolTip(
+            "Живая стенограмма base сохранится, пока medium не завершит обработку"
+        )
+        settings_layout.addWidget(self.refine_after_recording)
 
         refresh = QPushButton("Обновить список устройств")
         refresh.setObjectName("secondary")
@@ -417,6 +431,7 @@ class MainWindow(QMainWindow):
             energy_threshold=self.settings.energy_threshold,
             speaker_threshold=self.settings.speaker_threshold,
             output_root=Path(self.output_path.text()),
+            refine_after_recording=self.refine_after_recording.isChecked(),
         )
         save_settings(self.settings)
         combined_terms = self.dictionary_manager.combine(
@@ -433,6 +448,7 @@ class MainWindow(QMainWindow):
             self.bridge.status.emit,
             self.bridge.error.emit,
             transcriber=preloaded,
+            on_reset=self.bridge.reset_entries.emit,
         )
         try:
             self.pipeline.start()
@@ -484,6 +500,7 @@ class MainWindow(QMainWindow):
             self.download_model_button,
             self.dictionary_list,
             self.glossary,
+            self.refine_after_recording,
         ):
             widget.setEnabled(enabled)
 

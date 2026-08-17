@@ -3,11 +3,14 @@ from __future__ import annotations
 import queue
 import threading
 import time
+import wave
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .audio import CaptureWorker, DeviceService, SpeechSegmenter
+import numpy as np
+
+from .audio import CaptureWorker, DeviceService, SpeechSegmenter, resample_mono
 from .config import model_cache_dir
 from .diarization import OnlineSpeakerClusterer
 from .models import AppSettings, AudioPacket, AudioSource, TranscriptEntry, Utterance
@@ -27,6 +30,7 @@ class MeetingPipeline:
         on_status: Callable[[str], None],
         on_error: Callable[[str], None],
         transcriber=None,
+        on_reset: Callable[[], None] | None = None,
     ) -> None:
         if settings.output_root is None:
             raise ValueError("Не выбрана папка для сохранения")
@@ -35,6 +39,7 @@ class MeetingPipeline:
         self.on_entry = on_entry
         self.on_status = on_status
         self.on_error = on_error
+        self.on_reset = on_reset or (lambda: None)
         self._transcriber = transcriber or LocalWhisper(
             settings.whisper_model,
             model_cache_dir(),
@@ -120,6 +125,14 @@ class MeetingPipeline:
             self._processor.join()
         if self._writer:
             self._writer.close()
+            if self.settings.refine_after_recording:
+                try:
+                    self._refine_saved_transcript()
+                except Exception as exc:
+                    self.on_status(
+                        "Не удалось уточнить стенограмму моделью medium; "
+                        f"сохранён живой текст base: {exc}"
+                    )
         self.on_status("Стенограмма и аудио сохранены")
 
     def rename_speaker(self, speaker_id: str, role: str) -> None:
@@ -200,6 +213,105 @@ class MeetingPipeline:
             self._writer.add_entry(entry)
         self.on_entry(entry)
 
+    def _refine_saved_transcript(self) -> None:
+        if self._writer is None:
+            return
+        self.on_status(
+            "Уточняю итоговую стенограмму моделью medium; это может занять время…"
+        )
+        directory = self._writer.directory
+        refiner = LocalWhisper(
+            "medium",
+            model_cache_dir(),
+            self.settings.language,
+            self.settings.glossary,
+            self.on_status,
+        )
+        microphone = refiner.transcribe_file(directory / "microphone.wav")
+        system = refiner.transcribe_file(directory / "system_audio.wav")
+        clusterer = OnlineSpeakerClusterer(
+            model_cache_dir(),
+            self.settings.speaker_threshold,
+            on_status=self.on_status,
+        )
+        entries: list[TranscriptEntry] = []
+        for segment in microphone:
+            entries.append(
+                self._timed_entry(
+                    "microphone",
+                    "Вы",
+                    "self",
+                    segment.text,
+                    segment.start_seconds,
+                    segment.duration_seconds,
+                )
+            )
+        system_path = directory / "system_audio.wav"
+        for segment in system:
+            samples, sample_rate = _read_wave_segment(
+                system_path, segment.start_seconds, segment.duration_seconds
+            )
+            speaker_id = clusterer.identify(samples, sample_rate)
+            role = self._speaker_names.get(speaker_id)
+            if role is None:
+                number = speaker_id.rsplit("-", 1)[-1]
+                role = f"Собеседник {number}"
+            entries.append(
+                self._timed_entry(
+                    "system",
+                    role,
+                    speaker_id,
+                    segment.text,
+                    segment.start_seconds,
+                    segment.duration_seconds,
+                )
+            )
+        if not entries:
+            self.on_status("Модель medium не нашла речь; сохранён живой текст base")
+            return
+        entries.sort(
+            key=lambda item: (item.start_seconds, item.source != "microphone")
+        )
+        self._writer.replace_entries(entries)
+        self.on_reset()
+        for entry in entries:
+            self.on_entry(entry)
+        self.on_status("Итоговая стенограмма уточнена моделью medium")
+
+    def _timed_entry(
+        self,
+        source: AudioSource,
+        role: str,
+        speaker_id: str,
+        text: str,
+        start_seconds: float,
+        duration_seconds: float,
+    ) -> TranscriptEntry:
+        return TranscriptEntry(
+            source=source,
+            role=role,
+            text=text,
+            start_seconds=start_seconds,
+            duration_seconds=duration_seconds,
+            speaker_id=speaker_id,
+            created_at=self._wall_started_at + timedelta(seconds=start_seconds),
+        )
+
     def _on_capture_error(self, source: AudioSource, exc: Exception) -> None:
         label = "микрофона" if source == "microphone" else "звука приложений"
         self.on_error(f"Ошибка захвата {label}: {exc}")
+
+
+def _read_wave_segment(
+    path: Path, start_seconds: float, duration_seconds: float
+) -> tuple[np.ndarray, int]:
+    with wave.open(str(path), "rb") as handle:
+        source_rate = handle.getframerate()
+        start_frame = max(0, int(start_seconds * source_rate))
+        frame_count = max(1, int(max(duration_seconds, 0.45) * source_rate))
+        start_frame = min(start_frame, handle.getnframes())
+        handle.setpos(start_frame)
+        raw = handle.readframes(frame_count)
+    samples = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
+    target_rate = 16_000
+    return resample_mono(samples, source_rate, target_rate), target_rate
