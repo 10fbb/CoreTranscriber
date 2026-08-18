@@ -30,7 +30,6 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
-    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -38,6 +37,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
 )
 
+from . import __version__
 from .audio import DeviceService
 from .config import default_output_root, load_settings, model_cache_dir, save_settings
 from .diarization import OnlineSpeakerClusterer
@@ -73,7 +73,7 @@ class MainWindow(QMainWindow):
         self.elapsed_seconds = 0
         self.bridge = UiBridge()
         self.bridge.entry.connect(self._append_entry)
-        self.bridge.reset_entries.connect(lambda: self.table.setRowCount(0))
+        self.bridge.reset_entries.connect(self._reset_entries)
         self.bridge.status.connect(self._set_status)
         self.bridge.error.connect(self._show_error)
         self.bridge.stopped.connect(self._after_stop)
@@ -88,39 +88,100 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         self.setWindowTitle("CoreTranscriber — локальная транскрибация")
-        self.resize(1280, 820)
+        self.setMinimumSize(1120, 720)
+        self.resize(1400, 860)
         root = QWidget()
+        root.setObjectName("appRoot")
         self.setCentralWidget(root)
-        outer = QVBoxLayout(root)
-        outer.setContentsMargins(24, 20, 24, 20)
+        shell = QHBoxLayout(root)
+        shell.setContentsMargins(0, 0, 0, 0)
+        shell.setSpacing(0)
+
+        sidebar = QFrame()
+        sidebar.setObjectName("sidebar")
+        sidebar.setFixedWidth(214)
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(18, 24, 18, 20)
+        sidebar_layout.setSpacing(8)
+
+        brand = QLabel("CoreTranscriber")
+        brand.setObjectName("brand")
+        sidebar_layout.addWidget(brand)
+        brand_caption = QLabel("Локальная расшифровка")
+        brand_caption.setObjectName("sidebarCaption")
+        sidebar_layout.addWidget(brand_caption)
+        sidebar_layout.addSpacing(26)
+
+        recording_nav = _nav_button("●   Запись", active=True)
+        sidebar_layout.addWidget(recording_nav)
+        self.dictionaries_nav = _nav_button("▤   Словари")
+        self.dictionaries_nav.setToolTip("Открыть редактор технических словарей")
+        self.dictionaries_nav.clicked.connect(self._manage_dictionaries)
+        sidebar_layout.addWidget(self.dictionaries_nav)
+        self.models_nav = _nav_button("↓   Модели")
+        self.models_nav.setToolTip("Загрузить выбранные модели заранее")
+        self.models_nav.clicked.connect(self._prepare_model)
+        sidebar_layout.addWidget(self.models_nav)
+        about_nav = _nav_button("ⓘ   О программе")
+        about_nav.clicked.connect(self._show_about)
+        sidebar_layout.addWidget(about_nav)
+        sidebar_layout.addStretch()
+
+        privacy = QLabel("Всё аудио остаётся\nна этом компьютере")
+        privacy.setObjectName("privacy")
+        privacy.setWordWrap(True)
+        sidebar_layout.addWidget(privacy)
+        version = QLabel(f"Версия {__version__}")
+        version.setObjectName("version")
+        sidebar_layout.addWidget(version)
+        shell.addWidget(sidebar)
+
+        workspace = QWidget()
+        workspace.setObjectName("workspace")
+        outer = QVBoxLayout(workspace)
+        outer.setContentsMargins(28, 22, 28, 22)
         outer.setSpacing(16)
+        shell.addWidget(workspace, 1)
 
         header = QHBoxLayout()
         title_box = QVBoxLayout()
-        title = QLabel("CoreTranscriber")
+        eyebrow = QLabel("РАБОЧЕЕ ПРОСТРАНСТВО")
+        eyebrow.setObjectName("eyebrow")
+        title_box.addWidget(eyebrow)
+        title = QLabel("Запись встречи")
         title.setObjectName("appTitle")
-        subtitle = QLabel("Локально · без API‑ключей · аудио остаётся на компьютере")
+        subtitle = QLabel("Распознавание русской технической речи в реальном времени")
         subtitle.setObjectName("subtitle")
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
         header.addLayout(title_box)
         header.addStretch()
+        timer_caption = QLabel("ДЛИТЕЛЬНОСТЬ")
+        timer_caption.setObjectName("timerCaption")
+        header.addWidget(timer_caption)
         self.timer_label = QLabel("00:00")
         self.timer_label.setObjectName("timer")
         header.addWidget(self.timer_label)
         outer.addLayout(header)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setChildrenCollapsible(False)
-        outer.addWidget(splitter, 1)
+        content = QWidget()
+        content.setObjectName("content")
+        content_layout = QHBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(12)
+        outer.addWidget(content, 1)
 
         settings_card = QFrame()
         settings_card.setObjectName("card")
         settings_card.setMinimumWidth(360)
         settings_layout = QVBoxLayout(settings_card)
-        settings_layout.setContentsMargins(20, 20, 20, 20)
-        settings_layout.setSpacing(14)
-        settings_layout.addWidget(_section("Настройки встречи"))
+        settings_layout.setContentsMargins(20, 20, 20, 22)
+        settings_layout.setSpacing(13)
+        settings_layout.addWidget(_section("Параметры встречи"))
+        settings_intro = QLabel("Настройте источники звука и качество распознавания")
+        settings_intro.setObjectName("hint")
+        settings_intro.setWordWrap(True)
+        settings_layout.addWidget(settings_intro)
 
         form = QFormLayout()
         form.setSpacing(10)
@@ -130,7 +191,7 @@ class MainWindow(QMainWindow):
         self.mic_combo = QComboBox()
         form.addRow("Микрофон", self.mic_combo)
         self.speaker_combo = QComboBox()
-        form.addRow("Звук приложений", self.speaker_combo)
+        form.addRow("Звук ПК", self.speaker_combo)
         self.model_combo = QComboBox()
         model_options = (
             ("tiny", "tiny — максимальная скорость"),
@@ -151,7 +212,7 @@ class MainWindow(QMainWindow):
         form.addRow("Модель", self.model_combo)
         settings_layout.addLayout(form)
 
-        self.download_model_button = QPushButton("Скачать модели заранее")
+        self.download_model_button = QPushButton("↓  Подготовить локальные модели")
         self.download_model_button.setObjectName("secondary")
         self.download_model_button.clicked.connect(self._prepare_model)
         settings_layout.addWidget(self.download_model_button)
@@ -189,11 +250,12 @@ class MainWindow(QMainWindow):
         )
         settings_layout.addWidget(self.refinement_combo)
 
-        refresh = QPushButton("Обновить список устройств")
+        refresh = QPushButton("↻  Обновить список устройств")
         refresh.setObjectName("secondary")
         refresh.clicked.connect(self._refresh_devices)
         settings_layout.addWidget(refresh)
 
+        settings_layout.addWidget(_divider())
         settings_layout.addWidget(_section("Технические словари"))
         hint = QLabel("Отметьте только темы текущей встречи")
         hint.setObjectName("hint")
@@ -204,15 +266,15 @@ class MainWindow(QMainWindow):
         self.dictionary_list.itemChanged.connect(self._update_dictionary_count)
         settings_layout.addWidget(self.dictionary_list)
         dictionary_row = QHBoxLayout()
-        select_all = QPushButton("Все")
+        select_all = QPushButton("Выбрать все")
         select_all.setObjectName("secondary")
         select_all.clicked.connect(lambda: self._set_all_dictionaries(True))
         dictionary_row.addWidget(select_all)
-        select_none = QPushButton("Ни одного")
+        select_none = QPushButton("Снять все")
         select_none.setObjectName("secondary")
         select_none.clicked.connect(lambda: self._set_all_dictionaries(False))
         dictionary_row.addWidget(select_none)
-        manage_dictionaries = QPushButton("Управлять словарями")
+        manage_dictionaries = QPushButton("Изменить")
         manage_dictionaries.setObjectName("secondary")
         manage_dictionaries.clicked.connect(self._manage_dictionaries)
         dictionary_row.addWidget(manage_dictionaries)
@@ -225,7 +287,8 @@ class MainWindow(QMainWindow):
         dictionary_row.addWidget(self.dictionary_count)
         settings_layout.addLayout(dictionary_row)
 
-        settings_layout.addWidget(_section("Дополнительные термины встречи"))
+        settings_layout.addWidget(_divider())
+        settings_layout.addWidget(_section("Дополнительные термины"))
         extra_hint = QLabel("Имена, проекты и термины — по одному в строке")
         extra_hint.setObjectName("hint")
         settings_layout.addWidget(extra_hint)
@@ -236,6 +299,7 @@ class MainWindow(QMainWindow):
         self.glossary.setMinimumHeight(85)
         settings_layout.addWidget(self.glossary)
 
+        settings_layout.addWidget(_divider())
         settings_layout.addWidget(_section("Папка записей"))
         path_row = QHBoxLayout()
         self.output_path = QLineEdit(
@@ -252,41 +316,63 @@ class MainWindow(QMainWindow):
         settings_scroll = QScrollArea()
         settings_scroll.setWidgetResizable(True)
         settings_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        settings_scroll.setObjectName("settingsScroll")
         settings_scroll.setMinimumWidth(390)
-        settings_scroll.setMaximumWidth(490)
+        settings_scroll.setMaximumWidth(470)
         settings_scroll.setWidget(settings_card)
-        splitter.addWidget(settings_scroll)
+        content_layout.addWidget(settings_scroll)
 
         transcript_card = QFrame()
         transcript_card.setObjectName("card")
         transcript_layout = QVBoxLayout(transcript_card)
-        transcript_layout.setContentsMargins(20, 20, 20, 20)
-        transcript_layout.setSpacing(12)
+        transcript_layout.setContentsMargins(20, 20, 20, 18)
+        transcript_layout.setSpacing(14)
         transcript_head = QHBoxLayout()
-        transcript_head.addWidget(_section("Стенограмма в реальном времени"))
+        transcript_title = QVBoxLayout()
+        transcript_title.addWidget(_section("Стенограмма"))
+        transcript_subtitle = QLabel("Текст появляется здесь во время разговора")
+        transcript_subtitle.setObjectName("hint")
+        transcript_title.addWidget(transcript_subtitle)
+        transcript_head.addLayout(transcript_title)
         transcript_head.addStretch()
-        rename_hint = QLabel("Двойной клик по роли или тексту — изменить строку")
-        rename_hint.setObjectName("hint")
-        transcript_head.addWidget(rename_hint)
+        self.transcript_count_label = QLabel("0 реплик")
+        self.transcript_count_label.setObjectName("chip")
+        transcript_head.addWidget(self.transcript_count_label)
         transcript_layout.addLayout(transcript_head)
 
+        edit_hint = QLabel("Дважды щёлкните по имени участника или тексту, чтобы исправить реплику")
+        edit_hint.setObjectName("editorHint")
+        edit_hint.setWordWrap(True)
+        transcript_layout.addWidget(edit_hint)
+
         self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["Дата и время", "Роль", "Текст"])
+        self.table.setObjectName("transcriptTable")
+        self.table.setHorizontalHeaderLabels(["ВРЕМЯ", "УЧАСТНИК", "ТЕКСТ"])
         self.table.verticalHeader().setVisible(False)
+        self.table.setShowGrid(False)
+        self.table.setWordWrap(True)
+        self.table.setFrameShape(QFrame.Shape.NoFrame)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.table.setColumnWidth(0, 155)
-        self.table.setColumnWidth(1, 160)
+        self.table.setColumnWidth(0, 148)
+        self.table.setColumnWidth(1, 150)
+        self.table.verticalHeader().setDefaultSectionSize(58)
         self.table.cellDoubleClicked.connect(self._edit_transcript_cell)
         transcript_layout.addWidget(self.table, 1)
-        splitter.addWidget(transcript_card)
-        splitter.setStretchFactor(1, 1)
+        content_layout.addWidget(transcript_card, 1)
 
-        bottom = QHBoxLayout()
+        command_bar = QFrame()
+        command_bar.setObjectName("commandBar")
+        bottom = QHBoxLayout(command_bar)
+        bottom.setContentsMargins(16, 12, 12, 12)
+        bottom.setSpacing(10)
+        self.status_dot = QLabel("●")
+        self.status_dot.setObjectName("statusDot")
+        bottom.addWidget(self.status_dot)
         self.status_label = QLabel("Готово к записи")
         self.status_label.setObjectName("status")
         bottom.addWidget(self.status_label, 1)
@@ -302,9 +388,10 @@ class MainWindow(QMainWindow):
         bottom.addWidget(self.cancel_refinement_button)
         self.start_button = QPushButton("●  Начать запись")
         self.start_button.setObjectName("primary")
+        self.start_button.setMinimumWidth(176)
         self.start_button.clicked.connect(self._toggle_recording)
         bottom.addWidget(self.start_button)
-        outer.addLayout(bottom)
+        outer.addWidget(command_bar)
 
     def _refresh_devices(self) -> None:
         self.mic_combo.clear()
@@ -370,6 +457,17 @@ class MainWindow(QMainWindow):
         dialog.exec()
         self.settings.active_dictionaries = active
         self._refresh_dictionaries()
+
+    def _show_about(self) -> None:
+        QMessageBox.about(
+            self,
+            "О CoreTranscriber",
+            (
+                f"CoreTranscriber {__version__}\n\n"
+                "Локальная транскрибация русской технической речи.\n"
+                "Записи, словари и модели остаются на вашем компьютере."
+            ),
+        )
 
     def _set_all_dictionaries(self, checked: bool) -> None:
         state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
@@ -450,14 +548,14 @@ class MainWindow(QMainWindow):
         self.model_combo.setEnabled(True)
         self.download_model_button.setEnabled(True)
         self.start_button.setEnabled(True)
-        self.download_model_button.setText("Повторить подготовку моделей")
+        self.download_model_button.setText("↻  Повторить подготовку моделей")
         self._show_error(message)
 
     def _model_selection_changed(self, model_name: str) -> None:
         if self._models_prepared():
-            self.download_model_button.setText("Все выбранные модели готовы")
+            self.download_model_button.setText("✓  Выбранные модели готовы")
         else:
-            self.download_model_button.setText("Скачать модели заранее")
+            self.download_model_button.setText("↓  Подготовить локальные модели")
 
     def _models_prepared(self) -> bool:
         live_ready = str(self.model_combo.currentData()) in self.preloaded_models
@@ -598,6 +696,8 @@ class MainWindow(QMainWindow):
             self.glossary,
             self.refine_after_recording,
             self.refinement_combo,
+            self.dictionaries_nav,
+            self.models_nav,
         ):
             widget.setEnabled(enabled)
         if enabled:
@@ -621,7 +721,11 @@ class MainWindow(QMainWindow):
         role_item = QTableWidgetItem(entry.role)
         role_item.setData(Qt.ItemDataRole.UserRole, entry.speaker_id)
         role_item.setData(ENTRY_ID_ROLE, entry.entry_id)
-        role_item.setForeground(QColor("#6d35c5") if entry.source == "microphone" else QColor("#087ca7"))
+        role_item.setForeground(
+            QColor("#a78bfa")
+            if entry.source == "microphone"
+            else QColor("#55d6be")
+        )
         font = QFont()
         font.setBold(True)
         role_item.setFont(font)
@@ -633,6 +737,11 @@ class MainWindow(QMainWindow):
         self.table.setItem(row, 2, text_item)
         self.table.resizeRowToContents(row)
         self.table.scrollToBottom()
+        self.transcript_count_label.setText(_plural_replicas(row + 1))
+
+    def _reset_entries(self) -> None:
+        self._reset_entries()
+        self.transcript_count_label.setText("0 реплик")
 
     def _edit_transcript_cell(self, row: int, column: int) -> None:
         if column == 1:
@@ -698,9 +807,11 @@ class MainWindow(QMainWindow):
 
     def _set_status(self, message: str) -> None:
         self.status_label.setText(message)
+        self.status_dot.setStyleSheet("color: #55d6a7;")
 
     def _show_error(self, message: str) -> None:
         self.status_label.setText(message)
+        self.status_dot.setStyleSheet("color: #ef6a7f;")
         QMessageBox.warning(self, "CoreTranscriber", message)
 
     def closeEvent(self, event) -> None:
@@ -720,26 +831,221 @@ class MainWindow(QMainWindow):
     def _apply_style(self) -> None:
         self.setStyleSheet(
             """
-            QMainWindow, QWidget { background: #f5f5f8; color: #20222a; font-family: 'Segoe UI'; font-size: 14px; }
-            QFrame#card { background: white; border: 1px solid #e4e3ea; border-radius: 16px; }
-            QLabel#appTitle { font-size: 28px; font-weight: 700; color: #221c38; }
-            QLabel#subtitle, QLabel#hint { color: #777484; }
-            QLabel#timer { font-size: 25px; font-weight: 700; color: #6d35c5; padding: 7px 14px; background: #eee7fb; border-radius: 11px; }
-            QLabel#section { font-size: 16px; font-weight: 700; color: #2b2638; }
-            QLabel#status { color: #5d5969; }
-            QLineEdit, QComboBox, QPlainTextEdit, QListWidget { background: #faf9fc; border: 1px solid #dcd9e4; border-radius: 9px; padding: 9px; selection-background-color: #8a55d6; }
-            QComboBox { min-height: 21px; }
-            QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QListWidget:focus { border: 1px solid #8050c7; }
-            QPushButton { border: 0; border-radius: 10px; padding: 11px 17px; font-weight: 600; }
-            QPushButton#primary { background: #6f3ac4; color: white; }
-            QPushButton#primary:hover { background: #5c2ead; }
-            QPushButton#danger { background: #d84d63; color: white; }
-            QPushButton#secondary { background: #eceaf1; color: #3f3a4c; }
-            QPushButton:disabled { background: #d8d6dd; color: #95919c; }
-            QTableWidget { background: white; border: 1px solid #e3e1e8; border-radius: 10px; gridline-color: #efedf2; alternate-background-color: #faf9fc; }
-            QHeaderView::section { background: #f2eff7; color: #5c5669; border: 0; border-bottom: 1px solid #dedbe5; padding: 10px; font-weight: 600; }
-            QTableWidget::item { padding: 9px; }
-            QSplitter::handle { width: 12px; }
+            QMainWindow, QDialog, QMessageBox, QWidget#appRoot {
+                background: #080a12;
+                color: #f5f3fb;
+                font-family: 'Segoe UI';
+                font-size: 13px;
+            }
+            QWidget#workspace { background: #0a0c15; }
+            QFrame#sidebar {
+                background: #0d0f19;
+                border-right: 1px solid #252839;
+            }
+            QLabel#brand { color: #ffffff; font-size: 19px; font-weight: 700; }
+            QLabel#sidebarCaption, QLabel#version {
+                color: #73788b;
+                font-size: 11px;
+            }
+            QLabel#privacy {
+                color: #8c91a3;
+                background: #131622;
+                border: 1px solid #25293a;
+                border-radius: 10px;
+                padding: 11px;
+                line-height: 1.35;
+            }
+            QPushButton#nav, QPushButton#navActive {
+                min-height: 44px;
+                padding: 0 14px;
+                border: 0;
+                border-radius: 9px;
+                text-align: left;
+                font-weight: 600;
+                color: #aeb2c2;
+                background: transparent;
+            }
+            QPushButton#nav:hover { color: #ffffff; background: #171a28; }
+            QPushButton#navActive {
+                color: #ffffff;
+                background: #39236b;
+                border-left: 3px solid #9b72f2;
+            }
+            QPushButton#nav:disabled { color: #555a6a; background: transparent; }
+            QLabel#eyebrow {
+                color: #8f67e8;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 1px;
+            }
+            QLabel#appTitle { font-size: 27px; font-weight: 700; color: #ffffff; }
+            QLabel#subtitle, QLabel#hint { color: #858a9c; }
+            QLabel#timerCaption {
+                color: #73798b;
+                font-size: 10px;
+                font-weight: 700;
+                padding-right: 2px;
+            }
+            QLabel#timer {
+                font-size: 22px;
+                font-weight: 700;
+                color: #c3a7ff;
+                padding: 9px 14px;
+                background: #19132a;
+                border: 1px solid #35255b;
+                border-radius: 10px;
+            }
+            QFrame#card {
+                background: #10131e;
+                border: 1px solid #272b3c;
+                border-radius: 14px;
+            }
+            QLabel#section { font-size: 16px; font-weight: 700; color: #f5f3fb; }
+            QLabel#chip {
+                color: #c6b4ec;
+                background: #211834;
+                border: 1px solid #3a285e;
+                border-radius: 9px;
+                padding: 6px 10px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QLabel#editorHint {
+                color: #9095a7;
+                background: #151825;
+                border-radius: 8px;
+                padding: 9px 11px;
+            }
+            QFrame#divider { color: #262a3a; background: #262a3a; max-height: 1px; }
+            QScrollArea, QScrollArea#settingsScroll, QScrollArea > QWidget > QWidget {
+                background: transparent;
+                border: 0;
+            }
+            QLineEdit, QComboBox, QPlainTextEdit, QListWidget {
+                background: #161925;
+                color: #edf0f7;
+                border: 1px solid #2b3042;
+                border-radius: 8px;
+                padding: 9px;
+                selection-background-color: #6f45ce;
+                selection-color: #ffffff;
+            }
+            QComboBox { min-height: 22px; padding-right: 26px; }
+            QComboBox::drop-down { border: 0; width: 28px; }
+            QComboBox QAbstractItemView {
+                background: #171a27;
+                color: #f4f2fa;
+                border: 1px solid #34384a;
+                selection-background-color: #56369b;
+                outline: 0;
+            }
+            QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QListWidget:focus {
+                border: 1px solid #8058d9;
+            }
+            QListWidget::item { padding: 7px 5px; border-radius: 5px; }
+            QListWidget::item:hover { background: #202435; }
+            QListWidget::item:selected { background: #35245d; color: white; }
+            QCheckBox { color: #d6d8e2; spacing: 8px; }
+            QCheckBox::indicator { width: 17px; height: 17px; }
+            QCheckBox::indicator:unchecked {
+                background: #171a26;
+                border: 1px solid #3a3f52;
+                border-radius: 5px;
+            }
+            QCheckBox::indicator:checked {
+                background: #754bd3;
+                border: 1px solid #9a73ee;
+                border-radius: 5px;
+            }
+            QPushButton {
+                background: #1b1e2c;
+                color: #cbd0dc;
+                border: 1px solid #303547;
+                border-radius: 9px;
+                padding: 10px 15px;
+                font-weight: 600;
+            }
+            QPushButton:hover { background: #25293a; color: #ffffff; }
+            QPushButton#primary {
+                background: #7042cf;
+                color: white;
+                border: 1px solid #8659e2;
+            }
+            QPushButton#primary:hover { background: #8051dd; }
+            QPushButton#primary:pressed { background: #6136b8; }
+            QPushButton#danger {
+                background: #c44461;
+                color: white;
+                border: 1px solid #e15b76;
+            }
+            QPushButton#danger:hover { background: #d34b69; }
+            QPushButton#secondary {
+                background: #1b1e2c;
+                color: #cbd0dc;
+                border: 1px solid #303547;
+            }
+            QPushButton#secondary:hover { background: #25293a; color: #ffffff; }
+            QPushButton:disabled {
+                background: #171925;
+                color: #5e6373;
+                border-color: #232635;
+            }
+            QFrame#commandBar {
+                background: #10131e;
+                border: 1px solid #272b3c;
+                border-radius: 13px;
+            }
+            QLabel#statusDot { color: #55d6a7; font-size: 10px; }
+            QLabel#status { color: #b5b9c8; }
+            QTableWidget#transcriptTable {
+                background: #0e111b;
+                alternate-background-color: #121521;
+                color: #e8e9f0;
+                border: 1px solid #25293a;
+                border-radius: 9px;
+                outline: 0;
+                selection-background-color: #2d2150;
+                selection-color: #ffffff;
+            }
+            QHeaderView::section {
+                background: #171a27;
+                color: #858b9e;
+                border: 0;
+                border-bottom: 1px solid #2a2e3f;
+                padding: 11px;
+                font-size: 10px;
+                font-weight: 700;
+            }
+            QTableWidget::item {
+                padding: 10px;
+                border-bottom: 1px solid #202433;
+            }
+            QScrollBar:vertical {
+                background: transparent;
+                width: 10px;
+                margin: 2px;
+            }
+            QScrollBar::handle:vertical {
+                background: #35394b;
+                min-height: 28px;
+                border-radius: 4px;
+                border: none;
+            }
+            QScrollBar::handle:vertical:hover { background: #494e64; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0;
+                border: none;
+            }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: transparent;
+                border: none;
+            }
+            QToolTip {
+                background: #1c2030;
+                color: #f3f1f8;
+                border: 1px solid #3a3f52;
+                padding: 5px;
+            }
             """
         )
 
@@ -748,6 +1054,30 @@ def _section(text: str) -> QLabel:
     label = QLabel(text)
     label.setObjectName("section")
     return label
+
+
+def _divider() -> QFrame:
+    divider = QFrame()
+    divider.setObjectName("divider")
+    divider.setFrameShape(QFrame.Shape.HLine)
+    return divider
+
+
+def _nav_button(text: str, active: bool = False) -> QPushButton:
+    button = QPushButton(text)
+    button.setObjectName("navActive" if active else "nav")
+    button.setCursor(Qt.CursorShape.PointingHandCursor)
+    return button
+
+
+def _plural_replicas(count: int) -> str:
+    if count % 10 == 1 and count % 100 != 11:
+        noun = "реплика"
+    elif count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
+        noun = "реплики"
+    else:
+        noun = "реплик"
+    return f"{count} {noun}"
 
 
 def _write_model_preparation_error(exc: Exception) -> Path | None:

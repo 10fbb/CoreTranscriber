@@ -41,7 +41,7 @@ class ConfigTests(unittest.TestCase):
                 self.assertEqual(app_data_dir(), legacy)
 
     def test_version_is_0_4_1(self) -> None:
-        self.assertEqual(__version__, "0.4.1")
+        self.assertEqual(__version__, "0.5.0")
 
     def test_existing_cpu_install_migrates_from_medium_to_base_once(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
