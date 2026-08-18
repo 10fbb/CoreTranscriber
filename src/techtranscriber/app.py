@@ -38,11 +38,13 @@ from PySide6.QtWidgets import (
 
 from .audio import DeviceService
 from .config import default_output_root, load_settings, model_cache_dir, save_settings
+from .diarization import OnlineSpeakerClusterer
 from .dictionaries import MAX_PROMPT_TERMS, DictionaryManager
 from .dictionary_ui import DictionaryEditorDialog
 from .models import AppSettings, DeviceInfo, TranscriptEntry
 from .pipeline import MeetingPipeline
 from .transcriber import LocalWhisper
+from .transcript_editor import TranscriptEditDialog
 
 ENTRY_ID_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 
@@ -146,7 +148,7 @@ class MainWindow(QMainWindow):
         form.addRow("Модель", self.model_combo)
         settings_layout.addLayout(form)
 
-        self.download_model_button = QPushButton("Скачать модель заранее")
+        self.download_model_button = QPushButton("Скачать модели заранее")
         self.download_model_button.setObjectName("secondary")
         self.download_model_button.clicked.connect(self._prepare_model)
         settings_layout.addWidget(self.download_model_button)
@@ -346,12 +348,12 @@ class MainWindow(QMainWindow):
     def _prepare_model(self) -> None:
         model_name = str(self.model_combo.currentData())
         if model_name in self.preloaded_models:
-            self._set_status(f"Модель {model_name} уже готова")
+            self._set_status(f"Модели {model_name} уже готовы")
             return
         self.download_model_button.setEnabled(False)
         self.model_combo.setEnabled(False)
         self.start_button.setEnabled(False)
-        self.download_model_button.setText("Загрузка модели…")
+        self.download_model_button.setText("Подготовка моделей…")
         transcriber = LocalWhisper(
             model_name,
             model_cache_dir(),
@@ -363,10 +365,14 @@ class MainWindow(QMainWindow):
         def load_job() -> None:
             try:
                 transcriber.load()
+                speaker_model = OnlineSpeakerClusterer(
+                    model_cache_dir(), on_status=self.bridge.status.emit
+                )
+                speaker_model.prepare()
                 self.bridge.model_ready.emit(model_name, transcriber)
             except Exception as exc:
                 self.bridge.model_failed.emit(
-                    f"Не удалось загрузить модель {model_name}: {exc}"
+                    f"Не удалось подготовить локальные модели: {exc}"
                 )
 
         threading.Thread(target=load_job, name="model-download", daemon=True).start()
@@ -376,21 +382,23 @@ class MainWindow(QMainWindow):
         self.model_combo.setEnabled(True)
         self.download_model_button.setEnabled(True)
         self.start_button.setEnabled(True)
-        self._model_selection_changed(self.model_combo.currentText())
-        self._set_status(f"Модель {model_name} загружена и готова к записи")
+        self._model_selection_changed(str(self.model_combo.currentData()))
+        self._set_status(
+            f"Модель {model_name} и разделение голосов готовы к записи"
+        )
 
     def _model_failed(self, message: str) -> None:
         self.model_combo.setEnabled(True)
         self.download_model_button.setEnabled(True)
         self.start_button.setEnabled(True)
-        self.download_model_button.setText("Повторить загрузку модели")
+        self.download_model_button.setText("Повторить подготовку моделей")
         self._show_error(message)
 
     def _model_selection_changed(self, model_name: str) -> None:
         if model_name in self.preloaded_models:
-            self.download_model_button.setText(f"Модель {model_name} готова")
+            self.download_model_button.setText(f"Модели {model_name} готовы")
         else:
-            self.download_model_button.setText("Скачать модель заранее")
+            self.download_model_button.setText("Скачать модели заранее")
 
     @staticmethod
     def _fill_devices(combo: QComboBox, devices: list[DeviceInfo], selected: str) -> None:
@@ -552,14 +560,11 @@ class MainWindow(QMainWindow):
         if not text_item:
             return
         entry_id = text_item.data(Qt.ItemDataRole.UserRole)
-        text, accepted = QInputDialog.getMultiLineText(
-            self,
-            "Редактирование стенограммы",
-            "Исправьте текст выбранной реплики:",
-            text_item.text(),
-        )
-        text = text.strip()
-        if not accepted or not text:
+        dialog = TranscriptEditDialog(text_item.text(), self)
+        if not dialog.exec():
+            return
+        text = dialog.edited_text().strip()
+        if not text:
             return
         text_item.setText(text)
         text_item.setToolTip(text)
