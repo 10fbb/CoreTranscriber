@@ -40,8 +40,8 @@ class ConfigTests(unittest.TestCase):
             with patch.dict(os.environ, {"LOCALAPPDATA": str(local_app_data)}):
                 self.assertEqual(app_data_dir(), legacy)
 
-    def test_version_is_0_3_2(self) -> None:
-        self.assertEqual(__version__, "0.3.2")
+    def test_version_is_0_4_0(self) -> None:
+        self.assertEqual(__version__, "0.4.0")
 
     def test_existing_cpu_install_migrates_from_medium_to_base_once(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -59,8 +59,9 @@ class ConfigTests(unittest.TestCase):
                 settings = load_settings()
 
             self.assertEqual(settings.whisper_model, "base")
-            self.assertEqual(settings.settings_revision, 2)
+            self.assertEqual(settings.settings_revision, 3)
             self.assertTrue(settings.refine_after_recording)
+            self.assertEqual(settings.refinement_model, "small")
 
     def test_explicit_model_choice_is_preserved_after_migration(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -79,6 +80,7 @@ class ConfigTests(unittest.TestCase):
                 settings = load_settings()
 
             self.assertEqual(settings.whisper_model, "small")
+            self.assertEqual(settings.refinement_model, "small")
 
 
 if __name__ == "__main__":

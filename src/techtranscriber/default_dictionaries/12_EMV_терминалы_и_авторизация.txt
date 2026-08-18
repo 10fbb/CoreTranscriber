@@ -1,0 +1,138 @@
+EMV
+EMVCo
+ISO 8583
+авторизация
+authorization
+авторизационный запрос
+авторизационный ответ
+POS-терминал
+SoftPOS
+Tap to Phone
+NFC
+ARQC
+ARPC
+RRN
+STAN
+ARN
+EMV transaction
+EMV kernel
+EMV tag
+TLV
+Tag Length Value
+AID
+Application Identifier
+CAPK
+Certification Authority Public Key
+Authorization Request Cryptogram
+Authorization Response Cryptogram
+TC
+Transaction Certificate
+AAC
+Application Authentication Cryptogram
+TVR
+Terminal Verification Results
+TSI
+Transaction Status Information
+контактная операция
+бесконтактная операция
+contactless
+tap to pay
+payment terminal
+терминальное оборудование
+MPOS
+кассовое решение
+кассовое ПО
+ECR
+Electronic Cash Register
+интеграция с кассой
+онлайн-касса
+фискализация
+кассовый чек
+фискальный чек
+фискальный накопитель
+ОФД
+оператор фискальных данных
+54-ФЗ
+операция по карте
+card transaction
+платёжная транзакция
+transaction ID
+идентификатор транзакции
+merchant order ID
+идентификатор заказа
+Retrieval Reference Number
+System Trace Audit Number
+Acquirer Reference Number
+код авторизации
+authorization code
+код ответа
+response code
+ISO 20022
+MTI
+Message Type Indicator
+bitmap
+data element
+поле ISO 8583
+authorization request
+authorization response
+авторизация платежа
+финансовая авторизация
+одобрение операции
+approval
+отказ в операции
+decline
+soft decline
+hard decline
+do not honor
+недостаточно средств
+insufficient funds
+карта просрочена
+expired card
+неверный PIN
+invalid PIN
+неверный CVV
+invalid CVV
+карта ограничена
+restricted card
+карта потеряна
+lost card
+карта украдена
+stolen card
+подозрение на мошенничество
+suspected fraud
+эмитент недоступен
+issuer unavailable
+таймаут эмитента
+duplicate transaction
+дублирующая операция
+reversal
+реверсал
+автоматический реверсал
+отмена авторизации
+void
+отмена операции
+refund
+возврат
+частичный возврат
+partial refund
+полный возврат
+purchase
+покупка
+sale
+оплата
+capture
+подтверждение списания
+partial capture
+частичное подтверждение
+preauthorization
+pre-auth
+предавторизация
+completion
+завершение предавторизации
+incremental authorization
+дополнительная авторизация
+estimated authorization
+final authorization
+авторизационный холд
+hold
+разблокировка холда

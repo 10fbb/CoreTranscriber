@@ -1,5 +1,16 @@
-логирование
 лог
+трейс
+дэшборд
+OpenTelemetry Collector
+OTLP
+eBPF
+structured logging
+RED method
+USE method
+error budget
+burn rate
+exemplar
+логирование
 журнал событий
 мониторинг
 метрика
@@ -64,4 +75,3 @@ mean time to recovery
 MTTR
 mean time between failures
 MTBF
-

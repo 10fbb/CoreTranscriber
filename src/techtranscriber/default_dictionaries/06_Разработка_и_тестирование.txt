@@ -1,3 +1,21 @@
+коммит
+мердж
+пул-реквест
+юнит-тест
+мок
+стаб
+фикстура
+стек-трейс
+pytest
+Playwright
+Cypress
+Vitest
+Jest
+Ruff
+mypy
+contract testing
+mutation testing
+AI coding assistant
 Python
 Java
 JavaScript
@@ -76,4 +94,3 @@ design pattern
 singleton
 factory
 repository pattern
-

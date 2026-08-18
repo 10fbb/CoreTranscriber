@@ -1,0 +1,86 @@
+клиринг
+clearing
+взаиморасчёты
+settlement
+сверка
+reconciliation
+чарджбэк
+chargeback
+диспут
+dispute
+антифрод
+fraud scoring
+device fingerprint
+velocity check
+clearing file
+клиринговый файл
+расчётный файл
+settlement file
+settlement date
+дата расчёта
+business day
+операционный день
+банковский день
+gross settlement
+валовые расчёты
+net settlement
+нетто-расчёты
+финансовая сверка
+реестр операций
+журнал операций
+discrepancy
+расхождение
+unmatched transaction
+несопоставленная операция
+payout
+выплата мерчанту
+merchant funding
+возмещение торговой точке
+расчётный счёт
+commission
+комиссия
+MDR
+Merchant Discount Rate
+эквайринговая комиссия
+interchange fee
+интерчейндж
+межбанковская комиссия
+scheme fee
+комиссия платёжной системы
+processing fee
+процессинговая комиссия
+blended rate
+Interchange Plus Plus
+Interchange++
+опротестование операции
+payment dispute
+претензионная работа
+retrieval request
+запрос документов
+representment
+повторное представление
+pre-arbitration
+предарбитраж
+arbitration
+арбитраж
+reason code
+код причины чарджбэка
+chargeback ratio
+уровень чарджбэков
+fraud monitoring
+фрод-мониторинг
+fraud prevention
+risk scoring
+скоринговая модель
+правило антифрода
+проверка частоты операций
+blacklist
+чёрный список
+whitelist
+белый список
+цифровой отпечаток устройства
+IP reputation
+геолокация
+лимит операции
+дневной лимит
+накопительный лимит

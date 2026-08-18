@@ -1,0 +1,120 @@
+PCI DSS 4.0.1
+токенизация
+tokenization
+сетевой токен
+network token
+HSM
+3-D Secure
+3DS 2.3.1
+frictionless flow
+challenge flow
+SCA
+CAVV
+ECI
+liability shift
+delegated authentication
+PCI DSS
+PCI SSC
+PCI PIN
+PCI P2PE
+PCI 3DS
+PCI Secure Software
+cardholder data
+данные держателя карты
+CHD
+Cardholder Data Environment
+CDE
+sensitive authentication data
+SAD
+чувствительные аутентификационные данные
+токенизация карты
+card token
+payment token
+token requestor
+Token Requestor ID
+TRID
+token vault
+хранилище токенов
+card-on-file
+COF
+сохранённая карта
+credential-on-file
+account updater
+автоматическое обновление реквизитов
+Hardware Security Module
+криптографический модуль
+PIN block
+PIN-блок
+online PIN
+offline PIN
+PIN verification
+PIN translation
+PIN encryption
+DUKPT
+Derived Unique Key Per Transaction
+KSN
+Key Serial Number
+key ceremony
+ключевая церемония
+LMK
+Local Master Key
+ZMK
+Zone Master Key
+ZPK
+Zone PIN Key
+PVK
+PIN Verification Key
+CVK
+Card Verification Key
+CVM
+Cardholder Verification Method
+CDCVM
+Consumer Device Cardholder Verification Method
+3DS
+EMV 3-D Secure
+3DS 2.0
+3DS 2.1
+3DS 2.2
+3DS Server
+3DS SDK
+3DS Requestor
+Directory Server
+DS
+Access Control Server
+ACS
+AReq
+Authentication Request
+ARes
+Authentication Response
+CReq
+Challenge Request
+CRes
+Challenge Response
+RReq
+Results Request
+RRes
+Results Response
+бесшовная аутентификация
+проверка держателя карты
+out-of-band authentication
+OOB authentication
+decoupled authentication
+risk-based authentication
+RBA
+authentication value
+AAV
+Electronic Commerce Indicator
+перенос ответственности
+Strong Customer Authentication
+строгая аутентификация клиента
+PSD2
+card present
+CP transaction
+операция с присутствием карты
+card not present
+CNP transaction
+операция без присутствия карты
+e-commerce transaction
+электронная коммерция
+MOTO
+Mail Order Telephone Order

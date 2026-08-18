@@ -1,3 +1,20 @@
+докер
+кубернетес
+под
+неймспейс
+ингресс
+хелм
+пайплайн
+GitOps
+Argo CD
+Flux CD
+OpenTofu
+BuildKit
+OCI
+Kustomize
+Gateway API
+Istio
+Envoy
 Docker
 Docker Compose
 контейнер
@@ -8,7 +25,6 @@ container image
 registry
 Kubernetes
 Kubernetes cluster
-кубернетес
 pod
 namespace
 deployment
@@ -95,4 +111,3 @@ yarn
 pnpm
 Maven
 Gradle
-

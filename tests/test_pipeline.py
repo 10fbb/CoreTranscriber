@@ -26,10 +26,13 @@ class _Transcriber:
 
 
 class _Refiner:
+    calls = []
+
     def __init__(self, *args, **kwargs) -> None:
         return None
 
-    def transcribe_file(self, path: Path) -> list[TimedText]:
+    def transcribe_file(self, path: Path, **options) -> list[TimedText]:
+        self.calls.append((path.name, options))
         if path.name == "microphone.wav":
             return [TimedText("мой ответ", 3.0, 1.0)]
         return [TimedText("технический вопрос", 1.0, 1.5)]
@@ -39,8 +42,8 @@ class _Clusterer:
     def __init__(self, *args, **kwargs) -> None:
         return None
 
-    def identify(self, samples, sample_rate: int) -> str:
-        return "remote-2"
+    def identify_many(self, samples, sample_rate: int) -> list[str]:
+        return ["remote-2"] * len(samples)
 
 
 class _Writer:
@@ -83,7 +86,7 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(len(statuses), 1)
             self.assertIn("аудио сохраняется", statuses[0])
 
-    def test_offline_medium_refinement_replaces_live_entries_after_success(self) -> None:
+    def test_offline_small_refinement_replaces_live_entries_after_success(self) -> None:
         statuses: list[str] = []
         displayed = []
         resets: list[bool] = []
@@ -119,6 +122,9 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(writer.replaced[0].role, "Собеседник 2")
             self.assertEqual(writer.replaced[1].role, "Вы")
             self.assertIn("уточнена", statuses[-1])
+            self.assertIn("small", statuses[-1])
+            self.assertEqual(_Refiner.calls[-1][1]["beam_size"], 1)
+            self.assertEqual(_Refiner.calls[-1][1]["batch_size"], 8)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,21 @@
+фронтенд
+бэкенд
+фулстек
+микрофронтенд
+модульный монолит
+platform engineering
+платформенная инженерия
+internal developer platform
+IDP
+cloud-native
+API-first
+SaaS
+PaaS
+IaaS
+технический долг
+легаси
 OMNIS
 Dion
-DION
 Express
 Discord
 Zoom
@@ -89,4 +104,3 @@ feature flag
 обработка ошибок
 бизнес-логика
 алгоритм
-

@@ -58,5 +58,6 @@ class AppSettings:
     energy_threshold: float = 0.008
     speaker_threshold: float = 0.67
     output_root: Path | None = None
-    settings_revision: int = 2
+    settings_revision: int = 3
     refine_after_recording: bool = True
+    refinement_model: str = "small"

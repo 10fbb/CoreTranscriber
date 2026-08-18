@@ -1,3 +1,18 @@
+лейаут
+тултип
+design tokens
+Core Web Vitals
+LCP
+INP
+CLS
+SSR
+SSG
+hydration
+PWA
+Web Components
+Storybook
+Figma Variables
+dark mode
 UI
 UX
 UI/UX
@@ -91,4 +106,3 @@ Google Tag Manager
 конверсия
 воронка
 A/B-тестирование
-

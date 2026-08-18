@@ -23,6 +23,13 @@ class FakeClusterer(OnlineSpeakerClusterer):
         vector = next(self.embeddings)
         return vector / np.linalg.norm(vector)
 
+    def _embeddings(self, samples: list[np.ndarray]):
+        result = []
+        for _ in samples:
+            vector = next(self.embeddings)
+            result.append(vector / np.linalg.norm(vector))
+        return result
+
 
 class RecoveringClusterer(OnlineSpeakerClusterer):
     def __init__(self, cache_dir: Path, statuses: list[str]) -> None:
@@ -103,6 +110,23 @@ class DiarizationTests(unittest.TestCase):
             self.assertEqual(
                 speakers,
                 ["remote-1", "remote-2", "remote-3", "remote-4", "remote-5"],
+            )
+
+    def test_batches_embeddings_and_keeps_temporal_clustering_order(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            clusterer = FakeClusterer(
+                Path(temp),
+                [
+                    np.array([1.0, 0.0]),
+                    np.array([0.99, 0.01]),
+                    np.array([0.0, 1.0]),
+                ],
+            )
+            audio = [np.ones(16_000, dtype=np.float32) for _ in range(3)]
+
+            self.assertEqual(
+                clusterer.identify_many(audio),
+                ["remote-1", "remote-1", "remote-2"],
             )
 
 

@@ -25,28 +25,51 @@ class DictionaryTests(unittest.TestCase):
             manager.delete(first)
             self.assertFalse((Path(temp) / first).exists())
 
-    def test_default_acquiring_dictionary_is_packaged(self) -> None:
-        path = (
-            ROOT
-            / "src"
-            / "techtranscriber"
-            / "default_dictionaries"
-            / "11_Эквайринг_и_банковский_процессинг.txt"
-        )
-        content = path.read_text(encoding="utf-8")
-        for term in ("эквайринг", "ISO 8583", "3DS Server", "PCI DSS", "СБП"):
-            self.assertIn(term, content)
+    def test_acquiring_terms_are_split_into_focused_dictionaries(self) -> None:
+        root = ROOT / "src" / "techtranscriber" / "default_dictionaries"
+        expected = {
+            "11_Эквайринг_и_банковский_процессинг.txt": "эквайринг",
+            "12_EMV_терминалы_и_авторизация.txt": "ISO 8583",
+            "14_PCI_токенизация_и_3DS.txt": "3DS Server",
+            "15_Регулярные_кошельки_и_СБП.txt": "СБП",
+        }
+        for filename, term in expected.items():
+            self.assertIn(term, (root / filename).read_text(encoding="utf-8"))
+
+    def test_packaged_dictionaries_have_no_case_insensitive_duplicates(self) -> None:
+        root = ROOT / "src" / "techtranscriber" / "default_dictionaries"
+        for path in root.glob("*.txt"):
+            terms = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            self.assertEqual(
+                len(terms), len({term.casefold() for term in terms}), path.name
+            )
 
     def test_defaults_are_installed_only_once(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             with patch("techtranscriber.dictionaries.app_data_dir", return_value=root):
                 manager = DictionaryManager(root / "Словари")
-                self.assertEqual(len(manager.list()), 11)
+                self.assertEqual(len(manager.list()), 16)
                 acquiring = "11_Эквайринг_и_банковский_процессинг.txt"
                 manager.delete(acquiring)
                 DictionaryManager(root / "Словари")
                 self.assertFalse((root / "Словари" / acquiring).exists())
+
+    def test_dictionary_update_preserves_custom_terms(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dictionary_dir = root / "Словари"
+            dictionary_dir.mkdir()
+            filename = "01_Общие_IT_и_платформы.txt"
+            (dictionary_dir / filename).write_text(
+                "Мой внутренний сервис\nDion\n", encoding="utf-8"
+            )
+            with patch("techtranscriber.dictionaries.app_data_dir", return_value=root):
+                manager = DictionaryManager(dictionary_dir)
+
+            terms = manager.load(filename)
+            self.assertEqual(terms[0], "Мой внутренний сервис")
+            self.assertIn("platform engineering", terms)
 
     def test_prompt_terms_prioritize_extras_and_balance_dictionaries(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

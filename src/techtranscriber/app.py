@@ -55,7 +55,7 @@ class UiBridge(QObject):
     status = Signal(str)
     error = Signal(str)
     stopped = Signal()
-    model_ready = Signal(str, object)
+    model_ready = Signal(object)
     model_failed = Signal(str)
 
 
@@ -65,6 +65,7 @@ class MainWindow(QMainWindow):
         self.settings = load_settings()
         self.dictionary_manager = DictionaryManager()
         self.preloaded_models: dict[str, LocalWhisper] = {}
+        self.preloaded_speaker_clusterer: OnlineSpeakerClusterer | None = None
         self.pipeline: MeetingPipeline | None = None
         self.last_session: Path | None = None
         self.elapsed_seconds = 0
@@ -154,15 +155,37 @@ class MainWindow(QMainWindow):
         settings_layout.addWidget(self.download_model_button)
 
         self.refine_after_recording = QCheckBox(
-            "После остановки уточнить итог моделью medium"
+            "После остановки уточнить итоговую стенограмму"
         )
         self.refine_after_recording.setChecked(
             self.settings.refine_after_recording
         )
         self.refine_after_recording.setToolTip(
-            "Живая стенограмма base сохранится, пока medium не завершит обработку"
+            "Живая стенограмма сохранится; уточнение можно прервать в любой момент"
+        )
+        self.refine_after_recording.toggled.connect(
+            lambda checked: self._refinement_toggled(checked)
         )
         settings_layout.addWidget(self.refine_after_recording)
+        self.refinement_combo = QComboBox()
+        refinement_options = (
+            ("small", "small — быстро, рекомендуется для CPU"),
+            ("turbo", "turbo — точнее, но может занять больше 10 минут"),
+            ("medium", "medium — медленнее, режим совместимости"),
+        )
+        for model, label in refinement_options:
+            self.refinement_combo.addItem(label, model)
+        refinement_index = self.refinement_combo.findData(
+            self.settings.refinement_model
+        )
+        self.refinement_combo.setCurrentIndex(max(0, refinement_index))
+        self.refinement_combo.setEnabled(self.refine_after_recording.isChecked())
+        self.refinement_combo.currentIndexChanged.connect(
+            lambda _: self._model_selection_changed(
+                str(self.model_combo.currentData())
+            )
+        )
+        settings_layout.addWidget(self.refinement_combo)
 
         refresh = QPushButton("Обновить список устройств")
         refresh.setObjectName("secondary")
@@ -193,6 +216,10 @@ class MainWindow(QMainWindow):
         dictionary_row.addWidget(manage_dictionaries)
         self.dictionary_count = QLabel("0 терминов")
         self.dictionary_count.setObjectName("hint")
+        self.dictionary_count.setToolTip(
+            "У Whisper ограничен размер контекстной подсказки; "
+            "сначала используются дополнительные и приоритетные термины"
+        )
         dictionary_row.addWidget(self.dictionary_count)
         settings_layout.addLayout(dictionary_row)
 
@@ -266,6 +293,11 @@ class MainWindow(QMainWindow):
         self.open_button.setEnabled(False)
         self.open_button.clicked.connect(self._open_session)
         bottom.addWidget(self.open_button)
+        self.cancel_refinement_button = QPushButton("Пропустить уточнение")
+        self.cancel_refinement_button.setObjectName("secondary")
+        self.cancel_refinement_button.setVisible(False)
+        self.cancel_refinement_button.clicked.connect(self._cancel_refinement)
+        bottom.addWidget(self.cancel_refinement_button)
         self.start_button = QPushButton("●  Начать запись")
         self.start_button.setObjectName("primary")
         self.start_button.clicked.connect(self._toggle_recording)
@@ -325,7 +357,7 @@ class MainWindow(QMainWindow):
         )
         if available > MAX_PROMPT_TERMS:
             self.dictionary_count.setText(
-                f"{selected} из {available} терминов используются"
+                f"{selected} приоритетных из {available}"
             )
         else:
             self.dictionary_count.setText(f"{selected} терминов")
@@ -347,8 +379,10 @@ class MainWindow(QMainWindow):
 
     def _prepare_model(self) -> None:
         model_name = str(self.model_combo.currentData())
-        if model_name in self.preloaded_models:
-            self._set_status(f"Модели {model_name} уже готовы")
+        refinement_model = str(self.refinement_combo.currentData())
+        prepare_refinement = self.refine_after_recording.isChecked()
+        if self._models_prepared():
+            self._set_status("Все выбранные модели уже готовы")
             return
         self.download_model_button.setEnabled(False)
         self.model_combo.setEnabled(False)
@@ -361,15 +395,32 @@ class MainWindow(QMainWindow):
             [],
             self.bridge.status.emit,
         )
+        refiner = (
+            transcriber
+            if prepare_refinement and refinement_model == model_name
+            else LocalWhisper(
+                refinement_model,
+                model_cache_dir(),
+                "ru",
+                [],
+                self.bridge.status.emit,
+            )
+            if prepare_refinement
+            else None
+        )
 
         def load_job() -> None:
             try:
                 transcriber.load()
+                if refiner is not None:
+                    refiner.load()
                 speaker_model = OnlineSpeakerClusterer(
                     model_cache_dir(), on_status=self.bridge.status.emit
                 )
                 speaker_model.prepare()
-                self.bridge.model_ready.emit(model_name, transcriber)
+                self.bridge.model_ready.emit(
+                    (model_name, transcriber, refinement_model, refiner, speaker_model)
+                )
             except Exception as exc:
                 self.bridge.model_failed.emit(
                     f"Не удалось подготовить локальные модели: {exc}"
@@ -377,14 +428,18 @@ class MainWindow(QMainWindow):
 
         threading.Thread(target=load_job, name="model-download", daemon=True).start()
 
-    def _model_ready(self, model_name: str, transcriber: LocalWhisper) -> None:
+    def _model_ready(self, payload: object) -> None:
+        model_name, transcriber, refinement_model, refiner, speaker_model = payload
         self.preloaded_models[model_name] = transcriber
+        if refiner is not None:
+            self.preloaded_models[refinement_model] = refiner
+        self.preloaded_speaker_clusterer = speaker_model
         self.model_combo.setEnabled(True)
         self.download_model_button.setEnabled(True)
         self.start_button.setEnabled(True)
         self._model_selection_changed(str(self.model_combo.currentData()))
         self._set_status(
-            f"Модель {model_name} и разделение голосов готовы к записи"
+            "Модели распознавания и разделения голосов готовы"
         )
 
     def _model_failed(self, message: str) -> None:
@@ -395,10 +450,26 @@ class MainWindow(QMainWindow):
         self._show_error(message)
 
     def _model_selection_changed(self, model_name: str) -> None:
-        if model_name in self.preloaded_models:
-            self.download_model_button.setText(f"Модели {model_name} готовы")
+        if self._models_prepared():
+            self.download_model_button.setText("Все выбранные модели готовы")
         else:
             self.download_model_button.setText("Скачать модели заранее")
+
+    def _models_prepared(self) -> bool:
+        live_ready = str(self.model_combo.currentData()) in self.preloaded_models
+        refinement_ready = (
+            not self.refine_after_recording.isChecked()
+            or str(self.refinement_combo.currentData()) in self.preloaded_models
+        )
+        return (
+            live_ready
+            and refinement_ready
+            and self.preloaded_speaker_clusterer is not None
+        )
+
+    def _refinement_toggled(self, checked: bool) -> None:
+        self.refinement_combo.setEnabled(checked)
+        self._model_selection_changed(str(self.model_combo.currentData()))
 
     @staticmethod
     def _fill_devices(combo: QComboBox, devices: list[DeviceInfo], selected: str) -> None:
@@ -440,6 +511,7 @@ class MainWindow(QMainWindow):
             speaker_threshold=self.settings.speaker_threshold,
             output_root=Path(self.output_path.text()),
             refine_after_recording=self.refine_after_recording.isChecked(),
+            refinement_model=str(self.refinement_combo.currentData()),
         )
         save_settings(self.settings)
         combined_terms = self.dictionary_manager.combine(
@@ -449,6 +521,11 @@ class MainWindow(QMainWindow):
         preloaded = self.preloaded_models.get(self.settings.whisper_model)
         if preloaded:
             preloaded.glossary = combined_terms
+        refiner = self.preloaded_models.get(self.settings.refinement_model)
+        if refiner:
+            refiner.glossary = combined_terms
+        if self.preloaded_speaker_clusterer:
+            self.preloaded_speaker_clusterer.reset_session()
         self.pipeline = MeetingPipeline(
             pipeline_settings,
             self.meeting_title.text(),
@@ -456,6 +533,8 @@ class MainWindow(QMainWindow):
             self.bridge.status.emit,
             self.bridge.error.emit,
             transcriber=preloaded,
+            refiner=refiner,
+            clusterer=self.preloaded_speaker_clusterer,
             on_reset=self.bridge.reset_entries.emit,
         )
         try:
@@ -478,6 +557,10 @@ class MainWindow(QMainWindow):
             return
         self.start_button.setEnabled(False)
         self.timer.stop()
+        if self.settings.refine_after_recording:
+            self.cancel_refinement_button.setEnabled(True)
+            self.cancel_refinement_button.setText("Пропустить уточнение")
+            self.cancel_refinement_button.setVisible(True)
 
         def stop_job() -> None:
             try:
@@ -491,6 +574,7 @@ class MainWindow(QMainWindow):
         threading.Thread(target=stop_job, name="stop-session", daemon=True).start()
 
     def _after_stop(self) -> None:
+        self.cancel_refinement_button.setVisible(False)
         self.start_button.setEnabled(True)
         self.start_button.setText("●  Начать запись")
         self.start_button.setObjectName("primary")
@@ -509,8 +593,20 @@ class MainWindow(QMainWindow):
             self.dictionary_list,
             self.glossary,
             self.refine_after_recording,
+            self.refinement_combo,
         ):
             widget.setEnabled(enabled)
+        if enabled:
+            self.refinement_combo.setEnabled(
+                self.refine_after_recording.isChecked()
+            )
+
+    def _cancel_refinement(self) -> None:
+        if not self.pipeline:
+            return
+        self.cancel_refinement_button.setEnabled(False)
+        self.cancel_refinement_button.setText("Останавливаю…")
+        self.pipeline.cancel_refinement()
 
     def _append_entry(self, entry: TranscriptEntry) -> None:
         row = self.table.rowCount()
@@ -613,6 +709,7 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
+            self.pipeline.cancel_refinement()
             self.pipeline.stop()
         event.accept()
 

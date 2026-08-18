@@ -1,0 +1,73 @@
+рекуррентный платёж
+recurring payment
+подписка
+CIT
+MIT
+one-click payment
+Apple Pay
+Google Pay
+Mir Pay
+СБП
+СБПэй
+QR-платёж
+Click to Pay
+Secure Remote Commerce
+SRC
+регулярный платёж
+subscription payment
+installment payment
+платёж в рассрочку
+Cardholder-Initiated Transaction
+транзакция по инициативе держателя
+Merchant-Initiated Transaction
+транзакция по инициативе мерчанта
+initial transaction
+subsequent transaction
+платёж в один клик
+Samsung Pay
+электронный кошелёк
+digital wallet
+payment cryptogram
+криптограмма
+QR-код
+статический QR-код
+динамический QR-код
+Система быстрых платежей
+C2B
+B2C
+P2P
+B2B
+перевод по номеру телефона
+оплата по QR-коду
+возврат через СБП
+on-us transaction
+внутрисетевая операция
+off-us transaction
+межбанковская операция
+маршрутизация транзакции
+transaction routing
+switch
+платёжный коммутатор
+payment switch
+stand-in processing
+STIP
+резервная авторизация
+single message system
+dual message system
+single message transaction
+dual message transaction
+core banking system
+CBS
+автоматизированная банковская система
+АБС
+card management system
+CMS
+система управления картами
+authorization host
+процессинговый хост
+front-office
+back-office
+эмиссия карты
+персонализация карты
+активация карты
+блокировка карты

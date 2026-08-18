@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import threading
 import types
 import unittest
 from pathlib import Path
@@ -12,7 +13,11 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from techtranscriber.transcriber import LocalWhisper, recommended_cpu_threads
+from techtranscriber.transcriber import (
+    LocalWhisper,
+    TranscriptionCancelled,
+    recommended_cpu_threads,
+)
 
 
 class _Segment:
@@ -30,6 +35,14 @@ class _RecordingModel:
     def transcribe(self, samples, **options):
         self.options = options
         return self.segments, object()
+
+
+class _RecordingBatchedPipeline:
+    def __init__(self, model) -> None:
+        self.model = model
+
+    def transcribe(self, samples, **options):
+        return self.model.transcribe(samples, **options)
 
 
 class TranscriberTests(unittest.TestCase):
@@ -87,22 +100,56 @@ class TranscriberTests(unittest.TestCase):
                 model.options["hotwords"], "REST API, PostgreSQL, Dion"
             )
 
-    def test_saved_audio_refinement_uses_medium_quality_options(self) -> None:
+    def test_saved_audio_refinement_uses_fast_batched_options(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
-            transcriber = LocalWhisper("medium", Path(temp), glossary=["REST API"])
+            transcriber = LocalWhisper("turbo", Path(temp), glossary=["REST API"])
             model = _RecordingModel([_Segment(" REST API работает ", 2.5, 4.0)])
             transcriber._model = model
 
-            segments = transcriber.transcribe_file(Path(temp) / "system_audio.wav")
+            with patch(
+                "faster_whisper.BatchedInferencePipeline",
+                _RecordingBatchedPipeline,
+            ):
+                segments = transcriber.transcribe_file(
+                    Path(temp) / "system_audio.wav", batch_size=4, beam_size=1
+                )
 
             self.assertEqual(len(segments), 1)
             self.assertEqual(segments[0].text, "REST API работает")
             self.assertEqual(segments[0].start_seconds, 2.5)
             self.assertEqual(segments[0].duration_seconds, 1.5)
-            self.assertEqual(model.options["beam_size"], 5)
-            self.assertEqual(model.options["best_of"], 5)
+            self.assertEqual(model.options["beam_size"], 1)
+            self.assertEqual(model.options["best_of"], 1)
+            self.assertEqual(model.options["batch_size"], 4)
             self.assertFalse(model.options["without_timestamps"])
             self.assertTrue(model.options["vad_filter"])
+
+    def test_hotwords_fit_complete_terms_into_token_budget(self) -> None:
+        class FakeTokenizer:
+            def encode(self, value: str):
+                return types.SimpleNamespace(ids=list(value))
+
+        with tempfile.TemporaryDirectory() as temp:
+            first = "A" * 100
+            too_large_together = "B" * 100
+            last = "C"
+            transcriber = LocalWhisper(
+                "small", Path(temp), glossary=[first, too_large_together, last]
+            )
+            transcriber._model = types.SimpleNamespace(hf_tokenizer=FakeTokenizer())
+
+            self.assertEqual(transcriber._hotwords(), f"{first}, {last}")
+
+    def test_refinement_can_be_cancelled_before_model_loading(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            transcriber = LocalWhisper("small", Path(temp))
+            cancel = threading.Event()
+            cancel.set()
+
+            with self.assertRaises(TranscriptionCancelled):
+                transcriber.transcribe_file(
+                    Path(temp) / "system_audio.wav", cancel_event=cancel
+                )
 
 
 if __name__ == "__main__":

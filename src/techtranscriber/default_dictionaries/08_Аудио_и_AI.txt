@@ -1,3 +1,17 @@
+Whisper turbo
+large-v3-turbo
+faster-whisper
+CTranslate2
+Silero VAD
+батчинг
+batched inference
+квантизация
+int8
+диаризация
+галлюцинация модели
+word error rate
+WER
+voice activity detection
 WASAPI
 WASAPI Loopback
 микрофон
@@ -13,7 +27,6 @@ AAC
 Opus
 WebRTC
 Whisper
-faster-whisper
 Whisper Small
 Whisper Medium
 Whisper Large-v3
@@ -21,7 +34,6 @@ SpeechBrain
 ECAPA-TDNN
 транскрибация
 распознавание речи
-диаризация
 разделение спикеров
 голосовой отпечаток
 speaker identification
@@ -46,7 +58,6 @@ speech-to-text
 STT
 text-to-speech
 TTS
-voice activity detection
 VAD
 voice embedding
 audio channel
@@ -58,4 +69,3 @@ automatic gain control
 AGC
 latency
 real-time transcription
-

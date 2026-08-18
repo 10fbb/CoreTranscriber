@@ -47,7 +47,11 @@ def load_settings() -> AppSettings:
             "large-v3",
         }:
             payload["whisper_model"] = "base"
-        payload["settings_revision"] = 2
+        if revision < 3:
+            payload["refinement_model"] = "small"
+        if payload.get("refinement_model") not in {"small", "turbo", "medium"}:
+            payload["refinement_model"] = "small"
+        payload["settings_revision"] = 3
         output = payload.get("output_root")
         payload["output_root"] = Path(output) if output else default_output_root()
         return AppSettings(**payload)

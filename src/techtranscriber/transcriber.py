@@ -9,6 +9,8 @@ from pathlib import Path
 import numpy as np
 
 MAX_HOTWORDS = 200
+MAX_HOTWORD_TOKENS = 180
+DEFAULT_REFINEMENT_BATCH_SIZE = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +18,10 @@ class TimedText:
     text: str
     start_seconds: float
     duration_seconds: float
+
+
+class TranscriptionCancelled(RuntimeError):
+    pass
 
 
 def recommended_cpu_threads(logical_cpu_count: int | None = None) -> int:
@@ -99,14 +105,29 @@ class LocalWhisper:
         parts = [segment.text.strip() for segment in segments if segment.text.strip()]
         return " ".join(parts).strip()
 
-    def transcribe_file(self, path: Path) -> list[TimedText]:
-        """Produce a higher-quality timestamped transcript from saved audio."""
+    def transcribe_file(
+        self,
+        path: Path,
+        *,
+        beam_size: int = 1,
+        batch_size: int = DEFAULT_REFINEMENT_BATCH_SIZE,
+        cancel_event: threading.Event | None = None,
+    ) -> list[TimedText]:
+        """Produce a fast, timestamped transcript from saved audio in batches."""
+        if cancel_event and cancel_event.is_set():
+            raise TranscriptionCancelled("уточнение отменено")
         self.load()
-        segments, _ = self._model.transcribe(
+        if cancel_event and cancel_event.is_set():
+            raise TranscriptionCancelled("уточнение отменено")
+
+        from faster_whisper import BatchedInferencePipeline
+
+        batched_model = BatchedInferencePipeline(self._model)
+        segments, _ = batched_model.transcribe(
             str(path),
             language=self.language,
-            beam_size=5,
-            best_of=5,
+            beam_size=max(1, beam_size),
+            best_of=1,
             temperature=0.0,
             condition_on_previous_text=False,
             initial_prompt=self._prompt(),
@@ -114,9 +135,12 @@ class LocalWhisper:
             without_timestamps=False,
             vad_filter=True,
             vad_parameters={"min_silence_duration_ms": 350},
+            batch_size=max(1, batch_size),
         )
         result: list[TimedText] = []
         for segment in segments:
+            if cancel_event and cancel_event.is_set():
+                raise TranscriptionCancelled("уточнение отменено")
             text = segment.text.strip()
             if not text:
                 continue
@@ -136,7 +160,20 @@ class LocalWhisper:
         terms = [term.strip() for term in self.glossary if term.strip()][
             :MAX_HOTWORDS
         ]
-        return ", ".join(terms)
+        tokenizer = getattr(self._model, "hf_tokenizer", None)
+        if tokenizer is None:
+            return ", ".join(terms)
+
+        # faster-whisper truncates hotwords at half of Whisper's context window.
+        # Fit complete terms ourselves so the final item is never cut mid-word and
+        # enough context remains for the actual transcription.
+        selected: list[str] = []
+        for term in terms:
+            candidate = ", ".join([*selected, term])
+            token_count = len(tokenizer.encode(" " + candidate).ids)
+            if token_count <= MAX_HOTWORD_TOKENS:
+                selected.append(term)
+        return ", ".join(selected)
 
 
 class StubWhisper:

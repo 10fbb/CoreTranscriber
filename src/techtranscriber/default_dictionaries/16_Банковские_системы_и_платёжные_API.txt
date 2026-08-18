@@ -1,0 +1,95 @@
+payment switch
+процессинговый хост
+core banking system
+АБС
+card management system
+CMS
+open banking
+Open API
+A2A payment
+merchant onboarding
+payment link
+callback URL
+payment status
+идемпотентность платежа
+payment idempotency
+webhook платежа
+разблокировка карты
+стоп-лист
+AML
+ПОД/ФТ
+KYC
+Know Your Customer
+идентификация клиента
+санкционный скрининг
+комплаенс
+cross-border transaction
+трансграничная операция
+domestic transaction
+внутренняя операция
+валюта операции
+валюта расчёта
+transaction currency
+settlement currency
+currency conversion
+конвертация валюты
+DCC
+Dynamic Currency Conversion
+динамическая конвертация валюты
+base amount
+сумма операции
+additional amount
+tip adjustment
+чаевые
+cashback
+cash withdrawal
+снятие наличных
+cash advance
+purchase with cashback
+original credit transaction
+OCT
+account funding transaction
+AFT
+push payment
+pull payment
+account-to-account payment
+эквайринговый договор
+договор с мерчантом
+анкета торговой точки
+онбординг мерчанта
+андеррайтинг мерчанта
+merchant underwriting
+merchant monitoring
+мониторинг торговой точки
+терминальная сеть
+парк терминалов
+профиль терминала
+параметры терминала
+batch close
+закрытие смены
+terminal reconciliation
+сверка итогов терминала
+receipt
+слип
+transaction receipt
+электронный чек
+код подтверждения
+платёжная ссылка
+invoice
+инвойс
+выставление счёта
+return URL
+success URL
+fail URL
+статус платежа
+pending
+processing
+succeeded
+failed
+cancelled
+authorized
+captured
+refunded
+partially refunded
+reversed
+chargeback received

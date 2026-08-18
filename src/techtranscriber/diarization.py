@@ -45,6 +45,12 @@ class OnlineSpeakerClusterer:
         self._encode_samples(test_signal)
         self._mark_success()
 
+    def reset_session(self) -> None:
+        """Keep the loaded encoder but forget speaker identities from the last meeting."""
+        with self._lock:
+            self._centroids.clear()
+            self._counts.clear()
+
     def identify(self, samples: np.ndarray, sample_rate: int = 16_000) -> str:
         samples = np.asarray(samples, dtype=np.float32).reshape(-1)
         if samples.size < int(sample_rate * 0.45):
@@ -52,6 +58,32 @@ class OnlineSpeakerClusterer:
         embedding = self._embedding(samples)
         if embedding is None:
             return self._fallback_id()
+
+        return self._assign_embedding(embedding)
+
+    def identify_many(
+        self, samples: list[np.ndarray], sample_rate: int = 16_000
+    ) -> list[str]:
+        """Create speaker embeddings in one batch, then cluster them in time order."""
+        if not samples:
+            return []
+        prepared = [np.asarray(item, dtype=np.float32).reshape(-1) for item in samples]
+        eligible = [
+            (index, item)
+            for index, item in enumerate(prepared)
+            if item.size >= int(sample_rate * 0.45)
+        ]
+        result = [self._fallback_id()] * len(prepared)
+        if not eligible:
+            return result
+        embeddings = self._embeddings([item for _, item in eligible])
+        if embeddings is None:
+            return result
+        for (index, _), embedding in zip(eligible, embeddings):
+            result[index] = self._assign_embedding(embedding)
+        return result
+
+    def _assign_embedding(self, embedding: np.ndarray) -> str:
 
         with self._lock:
             if not self._centroids:
@@ -83,6 +115,19 @@ class OnlineSpeakerClusterer:
             vector = self._encode_samples(samples)
             self._mark_success()
             return vector
+        except Exception as exc:
+            self._mark_failure(exc, now)
+            return None
+
+    def _embeddings(self, samples: list[np.ndarray]) -> list[np.ndarray] | None:
+        now = time.monotonic()
+        if now < self._next_retry_at:
+            return None
+        try:
+            self._load()
+            vectors = self._encode_sample_batch(samples)
+            self._mark_success()
+            return vectors
         except Exception as exc:
             self._mark_failure(exc, now)
             return None
@@ -128,6 +173,36 @@ class OnlineSpeakerClusterer:
         if not np.any(normalized):
             raise RuntimeError("не удалось построить голосовой отпечаток")
         return normalized
+
+    def _encode_sample_batch(self, samples: list[np.ndarray]) -> list[np.ndarray]:
+        if self._encoder is None:
+            raise RuntimeError("голосовая модель не загружена")
+        import torch
+
+        cleaned = [
+            np.nan_to_num(np.asarray(item, dtype=np.float32).reshape(-1), copy=True)
+            for item in samples
+        ]
+        max_length = max(item.size for item in cleaned)
+        batch = np.zeros((len(cleaned), max_length), dtype=np.float32)
+        lengths = np.empty(len(cleaned), dtype=np.float32)
+        for index, item in enumerate(cleaned):
+            batch[index, : item.size] = item
+            lengths[index] = item.size / max_length
+        waveforms = torch.from_numpy(batch)
+        relative_lengths = torch.from_numpy(lengths)
+        with torch.inference_mode():
+            encoded = self._encoder.encode_batch(waveforms, relative_lengths)
+        vectors = encoded.squeeze(1).detach().cpu().numpy().astype(np.float32)
+        result: list[np.ndarray] = []
+        for vector in vectors:
+            if not np.all(np.isfinite(vector)):
+                raise RuntimeError("голосовая модель вернула некорректный отпечаток")
+            normalized = _normalize(vector.reshape(-1))
+            if not np.any(normalized):
+                raise RuntimeError("не удалось построить голосовой отпечаток")
+            result.append(normalized)
+        return result
 
     def _mark_success(self) -> None:
         recovered = self._consecutive_failures > 0

@@ -1,3 +1,22 @@
+эндпоинт
+реквест
+респонс
+пейлоад
+хедер
+вебхук
+таймаут
+ретрай
+колбэк
+AsyncAPI
+OpenAPI 3.1
+JSON Schema
+Server-Sent Events
+SSE
+WebTransport
+Backend for Frontend
+BFF
+API contract
+контракт API
 API
 REST API
 GraphQL
@@ -41,7 +60,6 @@ pagination
 rate limit
 лимит запросов
 timeout
-таймаут
 retry
 повторный запрос
 callback
@@ -69,4 +87,3 @@ domain-driven design
 DDD
 bounded context
 domain model
-

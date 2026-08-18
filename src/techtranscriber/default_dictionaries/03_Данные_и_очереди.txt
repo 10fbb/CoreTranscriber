@@ -1,3 +1,21 @@
+консюмер
+продюсер
+топик
+партиция
+оффсет
+дедлок
+vector database
+векторная база данных
+pgvector
+lakehouse
+Apache Iceberg
+Debezium
+Kafka Streams
+Redis Streams
+материализованное представление
+exactly-once
+at-least-once
+at-most-once
 RabbitMQ
 Apache Kafka
 Redis
@@ -65,4 +83,3 @@ schema registry
 Avro
 Protocol Buffers
 Protobuf
-

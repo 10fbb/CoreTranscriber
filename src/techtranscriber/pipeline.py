@@ -15,7 +15,15 @@ from .config import model_cache_dir
 from .diarization import OnlineSpeakerClusterer
 from .models import AppSettings, AudioPacket, AudioSource, TranscriptEntry, Utterance
 from .storage import SessionWriter
-from .transcriber import LocalWhisper
+from .transcriber import LocalWhisper, TranscriptionCancelled
+
+
+REFINEMENT_OPTIONS = {
+    "small": {"beam_size": 1, "batch_size": 8},
+    "turbo": {"beam_size": 1, "batch_size": 4},
+    "medium": {"beam_size": 2, "batch_size": 4},
+}
+SPEAKER_BATCH_SIZE = 12
 
 
 class MeetingPipeline:
@@ -30,6 +38,8 @@ class MeetingPipeline:
         on_status: Callable[[str], None],
         on_error: Callable[[str], None],
         transcriber=None,
+        refiner=None,
+        clusterer=None,
         on_reset: Callable[[], None] | None = None,
     ) -> None:
         if settings.output_root is None:
@@ -47,7 +57,8 @@ class MeetingPipeline:
             settings.glossary,
             on_status,
         )
-        self._clusterer = OnlineSpeakerClusterer(
+        self._refiner = refiner
+        self._clusterer = clusterer or OnlineSpeakerClusterer(
             model_cache_dir(), settings.speaker_threshold, on_status=on_status
         )
         self._speaker_names: dict[str, str] = {}
@@ -62,6 +73,7 @@ class MeetingPipeline:
         self._started_at = 0.0
         self._wall_started_at = datetime.now()
         self._last_backlog_status_at = 0.0
+        self._refinement_cancel = threading.Event()
 
     @property
     def session_directory(self) -> Path | None:
@@ -128,12 +140,23 @@ class MeetingPipeline:
             if self.settings.refine_after_recording:
                 try:
                     self._refine_saved_transcript()
-                except Exception as exc:
+                except TranscriptionCancelled:
                     self.on_status(
-                        "Не удалось уточнить стенограмму моделью medium; "
-                        f"сохранён живой текст base: {exc}"
+                        "Уточнение пропущено; сохранена живая стенограмма"
+                    )
+                except Exception as exc:
+                    model_name = self.settings.refinement_model
+                    self.on_status(
+                        f"Не удалось уточнить стенограмму моделью {model_name}; "
+                        f"сохранён живой текст: {exc}"
                     )
         self.on_status("Стенограмма и аудио сохранены")
+
+    def cancel_refinement(self) -> None:
+        self._refinement_cancel.set()
+        self.on_status(
+            "Останавливаю уточнение; текущая живая стенограмма сохранена…"
+        )
 
     def rename_speaker(self, speaker_id: str, role: str) -> None:
         role = role.strip()
@@ -216,24 +239,36 @@ class MeetingPipeline:
     def _refine_saved_transcript(self) -> None:
         if self._writer is None:
             return
+        if self._refinement_cancel.is_set():
+            raise TranscriptionCancelled("уточнение отменено")
+        requested_model = self.settings.refinement_model
+        model_name = (
+            requested_model if requested_model in REFINEMENT_OPTIONS else "small"
+        )
+        options = REFINEMENT_OPTIONS[model_name]
         self.on_status(
-            "Уточняю итоговую стенограмму моделью medium; это может занять время…"
+            f"Быстро уточняю итог моделью {model_name} пакетами…"
         )
         directory = self._writer.directory
-        refiner = LocalWhisper(
-            "medium",
-            model_cache_dir(),
-            self.settings.language,
-            self.settings.glossary,
-            self.on_status,
+        refiner = self._refiner or LocalWhisper(
+            model_name, model_cache_dir(), self.settings.language,
+            self.settings.glossary, self.on_status,
         )
-        microphone = refiner.transcribe_file(directory / "microphone.wav")
-        system = refiner.transcribe_file(directory / "system_audio.wav")
-        clusterer = OnlineSpeakerClusterer(
-            model_cache_dir(),
-            self.settings.speaker_threshold,
-            on_status=self.on_status,
+        refiner.glossary = self.settings.glossary
+        self.on_status("Уточняю дорожку микрофона…")
+        microphone = refiner.transcribe_file(
+            directory / "microphone.wav",
+            cancel_event=self._refinement_cancel,
+            **options,
         )
+        self.on_status("Уточняю звук собеседников…")
+        system = refiner.transcribe_file(
+            directory / "system_audio.wav",
+            cancel_event=self._refinement_cancel,
+            **options,
+        )
+        if self._refinement_cancel.is_set():
+            raise TranscriptionCancelled("уточнение отменено")
         entries: list[TranscriptEntry] = []
         for segment in microphone:
             entries.append(
@@ -247,27 +282,38 @@ class MeetingPipeline:
                 )
             )
         system_path = directory / "system_audio.wav"
-        for segment in system:
-            samples, sample_rate = _read_wave_segment(
-                system_path, segment.start_seconds, segment.duration_seconds
-            )
-            speaker_id = clusterer.identify(samples, sample_rate)
-            role = self._speaker_names.get(speaker_id)
-            if role is None:
-                number = speaker_id.rsplit("-", 1)[-1]
-                role = f"Собеседник {number}"
-            entries.append(
-                self._timed_entry(
-                    "system",
-                    role,
-                    speaker_id,
-                    segment.text,
-                    segment.start_seconds,
-                    segment.duration_seconds,
+        if system:
+            self.on_status("Разделяю голоса собеседников пакетами…")
+        for offset in range(0, len(system), SPEAKER_BATCH_SIZE):
+            if self._refinement_cancel.is_set():
+                raise TranscriptionCancelled("уточнение отменено")
+            segment_batch = system[offset : offset + SPEAKER_BATCH_SIZE]
+            audio_batch = [
+                _read_wave_segment(
+                    system_path, segment.start_seconds, segment.duration_seconds
+                )[0]
+                for segment in segment_batch
+            ]
+            speaker_ids = self._clusterer.identify_many(audio_batch, 16_000)
+            for segment, speaker_id in zip(segment_batch, speaker_ids):
+                role = self._speaker_names.get(speaker_id)
+                if role is None:
+                    number = speaker_id.rsplit("-", 1)[-1]
+                    role = f"Собеседник {number}"
+                entries.append(
+                    self._timed_entry(
+                        "system",
+                        role,
+                        speaker_id,
+                        segment.text,
+                        segment.start_seconds,
+                        segment.duration_seconds,
+                    )
                 )
-            )
         if not entries:
-            self.on_status("Модель medium не нашла речь; сохранён живой текст base")
+            self.on_status(
+                f"Модель {model_name} не нашла речь; сохранён живой текст"
+            )
             return
         entries.sort(
             key=lambda item: (item.start_seconds, item.source != "microphone")
@@ -276,7 +322,7 @@ class MeetingPipeline:
         self.on_reset()
         for entry in entries:
             self.on_entry(entry)
-        self.on_status("Итоговая стенограмма уточнена моделью medium")
+        self.on_status(f"Итоговая стенограмма уточнена моделью {model_name}")
 
     def _timed_entry(
         self,

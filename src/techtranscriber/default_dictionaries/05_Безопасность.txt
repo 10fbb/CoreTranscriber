@@ -1,3 +1,19 @@
+passkey
+ключ доступа
+WebAuthn
+FIDO2
+SBOM
+software supply chain
+цепочка поставки ПО
+SAST
+DAST
+SCA
+secrets scanning
+mTLS
+CSP
+CVE
+CVSS
+zero-day
 авторизация
 аутентификация
 идентификация
@@ -64,4 +80,3 @@ service account
 ротация ключей
 credential
 учётные данные
-
