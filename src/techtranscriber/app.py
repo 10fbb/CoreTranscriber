@@ -47,8 +47,10 @@ from .models import AppSettings, DeviceInfo, TranscriptEntry
 from .pipeline import MeetingPipeline
 from .transcriber import LocalWhisper
 from .transcript_editor import TranscriptEditDialog
+from .themes import THEME_OPTIONS, theme_colors, theme_stylesheet
 
 ENTRY_ID_ROLE = int(Qt.ItemDataRole.UserRole) + 1
+SOURCE_ROLE = ENTRY_ID_ROLE + 1
 
 
 class UiBridge(QObject):
@@ -99,7 +101,7 @@ class MainWindow(QMainWindow):
 
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(214)
+        sidebar.setFixedWidth(232)
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(18, 24, 18, 20)
         sidebar_layout.setSpacing(8)
@@ -126,6 +128,19 @@ class MainWindow(QMainWindow):
         about_nav.clicked.connect(self._show_about)
         sidebar_layout.addWidget(about_nav)
         sidebar_layout.addStretch()
+
+        theme_label = QLabel("ОФОРМЛЕНИЕ")
+        theme_label.setObjectName("themeLabel")
+        sidebar_layout.addWidget(theme_label)
+        self.theme_combo = QComboBox()
+        self.theme_combo.setObjectName("themeSelector")
+        for theme_id, label in THEME_OPTIONS:
+            self.theme_combo.addItem(label, theme_id)
+        selected_theme = self.theme_combo.findData(self.settings.ui_theme)
+        self.theme_combo.setCurrentIndex(max(0, selected_theme))
+        self.theme_combo.currentIndexChanged.connect(self._theme_changed)
+        sidebar_layout.addWidget(self.theme_combo)
+        sidebar_layout.addSpacing(6)
 
         privacy = QLabel("Всё аудио остаётся\nна этом компьютере")
         privacy.setObjectName("privacy")
@@ -469,6 +484,16 @@ class MainWindow(QMainWindow):
             ),
         )
 
+    def _theme_changed(self, index: int) -> None:
+        theme_id = str(self.theme_combo.itemData(index))
+        if not theme_id:
+            return
+        self.settings.ui_theme = theme_id
+        save_settings(self.settings)
+        self._apply_style()
+        self._refresh_role_colors()
+        self._set_status(f"Оформление: {self.theme_combo.currentText()}")
+
     def _set_all_dictionaries(self, checked: bool) -> None:
         state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
         self.dictionary_list.blockSignals(True)
@@ -614,6 +639,7 @@ class MainWindow(QMainWindow):
             output_root=Path(self.output_path.text()),
             refine_after_recording=self.refine_after_recording.isChecked(),
             refinement_model=str(self.refinement_combo.currentData()),
+            ui_theme=self.settings.ui_theme,
         )
         save_settings(self.settings)
         combined_terms = self.dictionary_manager.combine(
@@ -721,11 +747,8 @@ class MainWindow(QMainWindow):
         role_item = QTableWidgetItem(entry.role)
         role_item.setData(Qt.ItemDataRole.UserRole, entry.speaker_id)
         role_item.setData(ENTRY_ID_ROLE, entry.entry_id)
-        role_item.setForeground(
-            QColor("#a78bfa")
-            if entry.source == "microphone"
-            else QColor("#55d6be")
-        )
+        role_item.setData(SOURCE_ROLE, entry.source)
+        role_item.setForeground(QColor(self._role_color(entry.source)))
         font = QFont()
         font.setBold(True)
         role_item.setFont(font)
@@ -742,6 +765,18 @@ class MainWindow(QMainWindow):
     def _reset_entries(self) -> None:
         self._reset_entries()
         self.transcript_count_label.setText("0 реплик")
+
+    def _role_color(self, source: str) -> str:
+        colors = theme_colors(self.settings.ui_theme)
+        return colors["mic" if source == "microphone" else "system"]
+
+    def _refresh_role_colors(self) -> None:
+        for row in range(self.table.rowCount()):
+            role_item = self.table.item(row, 1)
+            if role_item:
+                role_item.setForeground(
+                    QColor(self._role_color(str(role_item.data(SOURCE_ROLE))))
+                )
 
     def _edit_transcript_cell(self, row: int, column: int) -> None:
         if column == 1:
@@ -807,11 +842,15 @@ class MainWindow(QMainWindow):
 
     def _set_status(self, message: str) -> None:
         self.status_label.setText(message)
-        self.status_dot.setStyleSheet("color: #55d6a7;")
+        self.status_dot.setStyleSheet(
+            f"color: {theme_colors(self.settings.ui_theme)['success']};"
+        )
 
     def _show_error(self, message: str) -> None:
         self.status_label.setText(message)
-        self.status_dot.setStyleSheet("color: #ef6a7f;")
+        self.status_dot.setStyleSheet(
+            f"color: {theme_colors(self.settings.ui_theme)['error']};"
+        )
         QMessageBox.warning(self, "CoreTranscriber", message)
 
     def closeEvent(self, event) -> None:
@@ -829,225 +868,11 @@ class MainWindow(QMainWindow):
         event.accept()
 
     def _apply_style(self) -> None:
-        self.setStyleSheet(
-            """
-            QMainWindow, QDialog, QMessageBox, QWidget#appRoot {
-                background: #080a12;
-                color: #f5f3fb;
-                font-family: 'Segoe UI';
-                font-size: 13px;
-            }
-            QWidget#workspace { background: #0a0c15; }
-            QFrame#sidebar {
-                background: #0d0f19;
-                border-right: 1px solid #252839;
-            }
-            QLabel#brand { color: #ffffff; font-size: 19px; font-weight: 700; }
-            QLabel#sidebarCaption, QLabel#version {
-                color: #73788b;
-                font-size: 11px;
-            }
-            QLabel#privacy {
-                color: #8c91a3;
-                background: #131622;
-                border: 1px solid #25293a;
-                border-radius: 10px;
-                padding: 11px;
-                line-height: 1.35;
-            }
-            QPushButton#nav, QPushButton#navActive {
-                min-height: 44px;
-                padding: 0 14px;
-                border: 0;
-                border-radius: 9px;
-                text-align: left;
-                font-weight: 600;
-                color: #aeb2c2;
-                background: transparent;
-            }
-            QPushButton#nav:hover { color: #ffffff; background: #171a28; }
-            QPushButton#navActive {
-                color: #ffffff;
-                background: #39236b;
-                border-left: 3px solid #9b72f2;
-            }
-            QPushButton#nav:disabled { color: #555a6a; background: transparent; }
-            QLabel#eyebrow {
-                color: #8f67e8;
-                font-size: 10px;
-                font-weight: 700;
-                letter-spacing: 1px;
-            }
-            QLabel#appTitle { font-size: 27px; font-weight: 700; color: #ffffff; }
-            QLabel#subtitle, QLabel#hint { color: #858a9c; }
-            QLabel#timerCaption {
-                color: #73798b;
-                font-size: 10px;
-                font-weight: 700;
-                padding-right: 2px;
-            }
-            QLabel#timer {
-                font-size: 22px;
-                font-weight: 700;
-                color: #c3a7ff;
-                padding: 9px 14px;
-                background: #19132a;
-                border: 1px solid #35255b;
-                border-radius: 10px;
-            }
-            QFrame#card {
-                background: #10131e;
-                border: 1px solid #272b3c;
-                border-radius: 14px;
-            }
-            QLabel#section { font-size: 16px; font-weight: 700; color: #f5f3fb; }
-            QLabel#chip {
-                color: #c6b4ec;
-                background: #211834;
-                border: 1px solid #3a285e;
-                border-radius: 9px;
-                padding: 6px 10px;
-                font-size: 11px;
-                font-weight: 600;
-            }
-            QLabel#editorHint {
-                color: #9095a7;
-                background: #151825;
-                border-radius: 8px;
-                padding: 9px 11px;
-            }
-            QFrame#divider { color: #262a3a; background: #262a3a; max-height: 1px; }
-            QScrollArea, QScrollArea#settingsScroll, QScrollArea > QWidget > QWidget {
-                background: transparent;
-                border: 0;
-            }
-            QLineEdit, QComboBox, QPlainTextEdit, QListWidget {
-                background: #161925;
-                color: #edf0f7;
-                border: 1px solid #2b3042;
-                border-radius: 8px;
-                padding: 9px;
-                selection-background-color: #6f45ce;
-                selection-color: #ffffff;
-            }
-            QComboBox { min-height: 22px; padding-right: 26px; }
-            QComboBox::drop-down { border: 0; width: 28px; }
-            QComboBox QAbstractItemView {
-                background: #171a27;
-                color: #f4f2fa;
-                border: 1px solid #34384a;
-                selection-background-color: #56369b;
-                outline: 0;
-            }
-            QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QListWidget:focus {
-                border: 1px solid #8058d9;
-            }
-            QListWidget::item { padding: 7px 5px; border-radius: 5px; }
-            QListWidget::item:hover { background: #202435; }
-            QListWidget::item:selected { background: #35245d; color: white; }
-            QCheckBox { color: #d6d8e2; spacing: 8px; }
-            QCheckBox::indicator { width: 17px; height: 17px; }
-            QCheckBox::indicator:unchecked {
-                background: #171a26;
-                border: 1px solid #3a3f52;
-                border-radius: 5px;
-            }
-            QCheckBox::indicator:checked {
-                background: #754bd3;
-                border: 1px solid #9a73ee;
-                border-radius: 5px;
-            }
-            QPushButton {
-                background: #1b1e2c;
-                color: #cbd0dc;
-                border: 1px solid #303547;
-                border-radius: 9px;
-                padding: 10px 15px;
-                font-weight: 600;
-            }
-            QPushButton:hover { background: #25293a; color: #ffffff; }
-            QPushButton#primary {
-                background: #7042cf;
-                color: white;
-                border: 1px solid #8659e2;
-            }
-            QPushButton#primary:hover { background: #8051dd; }
-            QPushButton#primary:pressed { background: #6136b8; }
-            QPushButton#danger {
-                background: #c44461;
-                color: white;
-                border: 1px solid #e15b76;
-            }
-            QPushButton#danger:hover { background: #d34b69; }
-            QPushButton#secondary {
-                background: #1b1e2c;
-                color: #cbd0dc;
-                border: 1px solid #303547;
-            }
-            QPushButton#secondary:hover { background: #25293a; color: #ffffff; }
-            QPushButton:disabled {
-                background: #171925;
-                color: #5e6373;
-                border-color: #232635;
-            }
-            QFrame#commandBar {
-                background: #10131e;
-                border: 1px solid #272b3c;
-                border-radius: 13px;
-            }
-            QLabel#statusDot { color: #55d6a7; font-size: 10px; }
-            QLabel#status { color: #b5b9c8; }
-            QTableWidget#transcriptTable {
-                background: #0e111b;
-                alternate-background-color: #121521;
-                color: #e8e9f0;
-                border: 1px solid #25293a;
-                border-radius: 9px;
-                outline: 0;
-                selection-background-color: #2d2150;
-                selection-color: #ffffff;
-            }
-            QHeaderView::section {
-                background: #171a27;
-                color: #858b9e;
-                border: 0;
-                border-bottom: 1px solid #2a2e3f;
-                padding: 11px;
-                font-size: 10px;
-                font-weight: 700;
-            }
-            QTableWidget::item {
-                padding: 10px;
-                border-bottom: 1px solid #202433;
-            }
-            QScrollBar:vertical {
-                background: transparent;
-                width: 10px;
-                margin: 2px;
-            }
-            QScrollBar::handle:vertical {
-                background: #35394b;
-                min-height: 28px;
-                border-radius: 4px;
-                border: none;
-            }
-            QScrollBar::handle:vertical:hover { background: #494e64; }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0;
-                border: none;
-            }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                background: transparent;
-                border: none;
-            }
-            QToolTip {
-                background: #1c2030;
-                color: #f3f1f8;
-                border: 1px solid #3a3f52;
-                padding: 5px;
-            }
-            """
-        )
+        self.setStyleSheet(theme_stylesheet(self.settings.ui_theme))
+        if hasattr(self, "status_dot"):
+            self.status_dot.setStyleSheet(
+                f"color: {theme_colors(self.settings.ui_theme)['success']};"
+            )
 
 
 def _section(text: str) -> QLabel:

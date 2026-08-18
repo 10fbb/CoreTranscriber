@@ -40,8 +40,8 @@ class ConfigTests(unittest.TestCase):
             with patch.dict(os.environ, {"LOCALAPPDATA": str(local_app_data)}):
                 self.assertEqual(app_data_dir(), legacy)
 
-    def test_version_is_0_4_1(self) -> None:
-        self.assertEqual(__version__, "0.5.0")
+    def test_version_is_0_6_0(self) -> None:
+        self.assertEqual(__version__, "0.6.0")
 
     def test_existing_cpu_install_migrates_from_medium_to_base_once(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -59,9 +59,10 @@ class ConfigTests(unittest.TestCase):
                 settings = load_settings()
 
             self.assertEqual(settings.whisper_model, "base")
-            self.assertEqual(settings.settings_revision, 3)
+            self.assertEqual(settings.settings_revision, 4)
             self.assertTrue(settings.refine_after_recording)
             self.assertEqual(settings.refinement_model, "small")
+            self.assertEqual(settings.ui_theme, "modern_dark")
 
     def test_explicit_model_choice_is_preserved_after_migration(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -81,6 +82,42 @@ class ConfigTests(unittest.TestCase):
 
             self.assertEqual(settings.whisper_model, "small")
             self.assertEqual(settings.refinement_model, "small")
+
+    def test_valid_theme_is_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "settings.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "output_root": temp,
+                        "settings_revision": 4,
+                        "ui_theme": "glass_fluent",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch("techtranscriber.config.settings_path", return_value=path):
+                settings = load_settings()
+
+            self.assertEqual(settings.ui_theme, "glass_fluent")
+
+    def test_unknown_theme_falls_back_to_modern_dark(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "settings.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "output_root": temp,
+                        "settings_revision": 4,
+                        "ui_theme": "missing-theme",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch("techtranscriber.config.settings_path", return_value=path):
+                settings = load_settings()
+
+            self.assertEqual(settings.ui_theme, "modern_dark")
 
 
 if __name__ == "__main__":

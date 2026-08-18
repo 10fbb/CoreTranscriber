@@ -6,6 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from .models import AppSettings
+from .themes import DEFAULT_THEME, THEME_IDS
 
 
 def app_data_dir() -> Path:
@@ -51,7 +52,9 @@ def load_settings() -> AppSettings:
             payload["refinement_model"] = "small"
         if payload.get("refinement_model") not in {"small", "turbo", "medium"}:
             payload["refinement_model"] = "small"
-        payload["settings_revision"] = 3
+        if revision < 4 or payload.get("ui_theme") not in THEME_IDS:
+            payload["ui_theme"] = DEFAULT_THEME
+        payload["settings_revision"] = 4
         output = payload.get("output_root")
         payload["output_root"] = Path(output) if output else default_output_root()
         return AppSettings(**payload)
