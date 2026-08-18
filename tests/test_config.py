@@ -40,8 +40,8 @@ class ConfigTests(unittest.TestCase):
             with patch.dict(os.environ, {"LOCALAPPDATA": str(local_app_data)}):
                 self.assertEqual(app_data_dir(), legacy)
 
-    def test_version_is_0_3_1(self) -> None:
-        self.assertEqual(__version__, "0.3.1")
+    def test_version_is_0_3_2(self) -> None:
+        self.assertEqual(__version__, "0.3.2")
 
     def test_existing_cpu_install_migrates_from_medium_to_base_once(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

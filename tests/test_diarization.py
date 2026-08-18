@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -23,7 +24,59 @@ class FakeClusterer(OnlineSpeakerClusterer):
         return vector / np.linalg.norm(vector)
 
 
+class RecoveringClusterer(OnlineSpeakerClusterer):
+    def __init__(self, cache_dir: Path, statuses: list[str]) -> None:
+        super().__init__(
+            cache_dir,
+            on_status=statuses.append,
+            retry_base_seconds=10.0,
+            retry_max_seconds=30.0,
+        )
+        self.attempts = 0
+
+    def _load(self) -> None:
+        self._encoder = object()
+
+    def _encode_samples(self, samples: np.ndarray) -> np.ndarray:
+        self.attempts += 1
+        if self.attempts == 1:
+            raise RuntimeError("временная ошибка тестовой модели")
+        return np.array([1.0, 0.0], dtype=np.float32)
+
+
 class DiarizationTests(unittest.TestCase):
+    def test_retries_after_temporary_failure_and_reports_recovery(self) -> None:
+        statuses: list[str] = []
+        with tempfile.TemporaryDirectory() as temp:
+            clusterer = RecoveringClusterer(Path(temp), statuses)
+            samples = np.ones(16_000, dtype=np.float32)
+            with patch(
+                "techtranscriber.diarization.time.monotonic",
+                side_effect=[100.0, 105.0, 111.0],
+            ):
+                self.assertIsNone(clusterer._embedding(samples))
+                self.assertIsNone(clusterer._embedding(samples))
+                recovered = clusterer._embedding(samples)
+
+            self.assertEqual(clusterer.attempts, 2)
+            self.assertTrue(np.array_equal(recovered, np.array([1.0, 0.0])))
+            self.assertIn("повтор через 10 с", statuses[0])
+            self.assertIn("временная ошибка тестовой модели", statuses[0])
+            self.assertEqual(
+                statuses[-1], "Разделение удалённых голосов восстановлено"
+            )
+
+    def test_prepare_validates_encoder_before_recording(self) -> None:
+        statuses: list[str] = []
+        with tempfile.TemporaryDirectory() as temp:
+            clusterer = RecoveringClusterer(Path(temp), statuses)
+            clusterer.attempts = 1
+
+            clusterer.prepare()
+
+            self.assertEqual(clusterer.attempts, 2)
+            self.assertEqual(statuses, ["Модель различения голосов готова"])
+
     def test_clusters_same_and_different_voices(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             clusterer = FakeClusterer(
