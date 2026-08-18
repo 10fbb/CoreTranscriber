@@ -4,6 +4,8 @@ import os
 import subprocess
 import sys
 import threading
+import traceback
+from datetime import datetime
 from dataclasses import replace
 from pathlib import Path
 
@@ -422,8 +424,10 @@ class MainWindow(QMainWindow):
                     (model_name, transcriber, refinement_model, refiner, speaker_model)
                 )
             except Exception as exc:
+                log_path = _write_model_preparation_error(exc)
+                details = f"\nПодробности: {log_path}" if log_path else ""
                 self.bridge.model_failed.emit(
-                    f"Не удалось подготовить локальные модели: {exc}"
+                    f"Не удалось подготовить локальные модели: {exc}{details}"
                 )
 
         threading.Thread(target=load_job, name="model-download", daemon=True).start()
@@ -744,6 +748,18 @@ def _section(text: str) -> QLabel:
     label = QLabel(text)
     label.setObjectName("section")
     return label
+
+
+def _write_model_preparation_error(exc: Exception) -> Path | None:
+    try:
+        path = model_cache_dir() / "model_preparation.log"
+        timestamp = datetime.now().isoformat(timespec="seconds")
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(f"\n[{timestamp}] {type(exc).__name__}: {exc}\n")
+            handle.write("".join(traceback.format_exception(exc)))
+        return path
+    except OSError:
+        return None
 
 
 def main() -> int:
