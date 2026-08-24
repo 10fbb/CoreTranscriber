@@ -43,6 +43,8 @@ class TranscriptEntry:
     speaker_id: str | None = None
     entry_id: str = field(default_factory=lambda: uuid4().hex)
     created_at: datetime = field(default_factory=datetime.now)
+    role_edited: bool = False
+    text_edited: bool = False
 
 
 @dataclass(slots=True)

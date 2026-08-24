@@ -8,8 +8,8 @@ from pathlib import Path
 
 import numpy as np
 
-MAX_HOTWORDS = 200
-MAX_HOTWORD_TOKENS = 180
+MAX_HOTWORDS = 300
+MAX_HOTWORD_TOKENS = 220
 DEFAULT_REFINEMENT_BATCH_SIZE = 4
 
 

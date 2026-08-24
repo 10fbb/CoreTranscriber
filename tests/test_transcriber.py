@@ -111,7 +111,7 @@ class TranscriberTests(unittest.TestCase):
                 _RecordingBatchedPipeline,
             ):
                 segments = transcriber.transcribe_file(
-                    Path(temp) / "system_audio.wav", batch_size=4, beam_size=1
+                    Path(temp) / "meeting_audio.wav", batch_size=4, beam_size=1
                 )
 
             self.assertEqual(len(segments), 1)
@@ -130,7 +130,7 @@ class TranscriberTests(unittest.TestCase):
                 return types.SimpleNamespace(ids=list(value))
 
         with tempfile.TemporaryDirectory() as temp:
-            first = "A" * 100
+            first = "A" * 150
             too_large_together = "B" * 100
             last = "C"
             transcriber = LocalWhisper(
@@ -148,7 +148,7 @@ class TranscriberTests(unittest.TestCase):
 
             with self.assertRaises(TranscriptionCancelled):
                 transcriber.transcribe_file(
-                    Path(temp) / "system_audio.wav", cancel_event=cancel
+                    Path(temp) / "meeting_audio.wav", cancel_event=cancel
                 )
 
 

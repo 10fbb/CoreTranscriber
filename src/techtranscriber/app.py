@@ -763,7 +763,7 @@ class MainWindow(QMainWindow):
         self.transcript_count_label.setText(_plural_replicas(row + 1))
 
     def _reset_entries(self) -> None:
-        self._reset_entries()
+        self.table.setRowCount(0)
         self.transcript_count_label.setText("0 реплик")
 
     def _role_color(self, source: str) -> str:
@@ -788,6 +788,7 @@ class MainWindow(QMainWindow):
         role_item = self.table.item(row, 1)
         if not role_item:
             return
+        speaker_id = role_item.data(Qt.ItemDataRole.UserRole)
         entry_id = role_item.data(ENTRY_ID_ROLE)
         role, accepted = QInputDialog.getText(
             self, "Имя участника", "Введите имя или роль:", text=role_item.text()
@@ -795,9 +796,21 @@ class MainWindow(QMainWindow):
         role = role.strip()
         if not accepted or not role:
             return
-        role_item.setText(role)
-        if self.pipeline and entry_id:
+        if speaker_id:
+            for current_row in range(self.table.rowCount()):
+                current_item = self.table.item(current_row, 1)
+                if (
+                    current_item
+                    and current_item.data(Qt.ItemDataRole.UserRole) == speaker_id
+                ):
+                    current_item.setText(role)
+            if self.pipeline:
+                self.pipeline.rename_speaker(str(speaker_id), role)
+        elif self.pipeline and entry_id:
+            role_item.setText(role)
             self.pipeline.rename_entry(str(entry_id), role)
+        else:
+            role_item.setText(role)
 
     def _edit_text(self, row: int) -> None:
         text_item = self.table.item(row, 2)

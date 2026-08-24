@@ -1,7 +1,9 @@
 .venv/
+.cache/
 build/
 dist/
 __pycache__/
 *.pyc
 *.spec.bak
+~$*.pptx
 

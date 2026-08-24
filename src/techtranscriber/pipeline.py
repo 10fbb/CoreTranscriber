@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .audio import CaptureWorker, DeviceService, SpeechSegmenter, resample_mono
+from .audio import CaptureWorker, DeviceService, SpeechSegmenter
 from .config import model_cache_dir
 from .diarization import OnlineSpeakerClusterer
 from .models import AppSettings, AudioPacket, AudioSource, TranscriptEntry, Utterance
@@ -23,9 +23,6 @@ REFINEMENT_OPTIONS = {
     "turbo": {"beam_size": 1, "batch_size": 4},
     "medium": {"beam_size": 2, "batch_size": 4},
 }
-SPEAKER_BATCH_SIZE = 12
-
-
 class MeetingPipeline:
     BACKLOG_WARNING_UTTERANCES = 20
     BACKLOG_STATUS_INTERVAL_SECONDS = 30.0
@@ -88,7 +85,11 @@ class MeetingPipeline:
             return
         self._started_at = time.monotonic()
         self._wall_started_at = datetime.now()
-        self._writer = SessionWriter(self.settings.output_root, self.title)
+        self._writer = SessionWriter(
+            self.settings.output_root,
+            self.title,
+            session_started_at=self._started_at,
+        )
         self._segmenters = {
             source: SpeechSegmenter(
                 source,
@@ -213,7 +214,7 @@ class MeetingPipeline:
             return
         if utterance.source == "microphone":
             speaker_id = "self"
-            role = "Вы"
+            role = self._speaker_names.get(speaker_id, "Вы")
         else:
             speaker_id = self._clusterer.identify(
                 utterance.samples, utterance.sample_rate
@@ -231,6 +232,7 @@ class MeetingPipeline:
             speaker_id=speaker_id,
             created_at=self._wall_started_at
             + timedelta(seconds=utterance.start_seconds),
+            role_edited=speaker_id in self._speaker_names,
         )
         if self._writer:
             self._writer.add_entry(entry)
@@ -255,61 +257,36 @@ class MeetingPipeline:
             self.settings.glossary, self.on_status,
         )
         refiner.glossary = self.settings.glossary
-        self.on_status("Уточняю дорожку микрофона…")
-        microphone = refiner.transcribe_file(
-            directory / "microphone.wav",
-            cancel_event=self._refinement_cancel,
-            **options,
-        )
-        self.on_status("Уточняю звук собеседников…")
-        system = refiner.transcribe_file(
-            directory / "system_audio.wav",
-            cancel_event=self._refinement_cancel,
-            **options,
-        )
+        live_entries = self._writer.entries
+        source_path = directory / "meeting_audio.wav"
+        refinement_path = source_path
+        temporary_path: Path | None = None
+        protected_ranges = [
+            (entry.start_seconds, entry.duration_seconds)
+            for entry in live_entries
+            if entry.text_edited
+        ]
+        if protected_ranges:
+            temporary_path = directory / ".meeting_audio_for_refinement.wav"
+            _write_masked_wave(source_path, temporary_path, protected_ranges)
+            refinement_path = temporary_path
+            self.on_status(
+                "Уточняю общую аудиодорожку; вручную изменённые реплики пропущены…"
+            )
+        else:
+            self.on_status("Уточняю общую аудиодорожку…")
+        try:
+            refined = refiner.transcribe_file(
+                refinement_path,
+                cancel_event=self._refinement_cancel,
+                **options,
+            )
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
         if self._refinement_cancel.is_set():
             raise TranscriptionCancelled("уточнение отменено")
-        entries: list[TranscriptEntry] = []
-        for segment in microphone:
-            entries.append(
-                self._timed_entry(
-                    "microphone",
-                    "Вы",
-                    "self",
-                    segment.text,
-                    segment.start_seconds,
-                    segment.duration_seconds,
-                )
-            )
-        system_path = directory / "system_audio.wav"
-        if system:
-            self.on_status("Разделяю голоса собеседников пакетами…")
-        for offset in range(0, len(system), SPEAKER_BATCH_SIZE):
-            if self._refinement_cancel.is_set():
-                raise TranscriptionCancelled("уточнение отменено")
-            segment_batch = system[offset : offset + SPEAKER_BATCH_SIZE]
-            audio_batch = [
-                _read_wave_segment(
-                    system_path, segment.start_seconds, segment.duration_seconds
-                )[0]
-                for segment in segment_batch
-            ]
-            speaker_ids = self._clusterer.identify_many(audio_batch, 16_000)
-            for segment, speaker_id in zip(segment_batch, speaker_ids):
-                role = self._speaker_names.get(speaker_id)
-                if role is None:
-                    number = speaker_id.rsplit("-", 1)[-1]
-                    role = f"Собеседник {number}"
-                entries.append(
-                    self._timed_entry(
-                        "system",
-                        role,
-                        speaker_id,
-                        segment.text,
-                        segment.start_seconds,
-                        segment.duration_seconds,
-                    )
-                )
+        entries = _merge_refined_with_live(refined, live_entries, self._wall_started_at)
         if not entries:
             self.on_status(
                 f"Модель {model_name} не нашла речь; сохранён живой текст"
@@ -319,8 +296,9 @@ class MeetingPipeline:
             key=lambda item: (item.start_seconds, item.source != "microphone")
         )
         self._writer.replace_entries(entries)
+        final_entries = self._writer.entries
         self.on_reset()
-        for entry in entries:
+        for entry in final_entries:
             self.on_entry(entry)
         self.on_status(f"Итоговая стенограмма уточнена моделью {model_name}")
 
@@ -348,16 +326,105 @@ class MeetingPipeline:
         self.on_error(f"Ошибка захвата {label}: {exc}")
 
 
-def _read_wave_segment(
-    path: Path, start_seconds: float, duration_seconds: float
-) -> tuple[np.ndarray, int]:
-    with wave.open(str(path), "rb") as handle:
-        source_rate = handle.getframerate()
-        start_frame = max(0, int(start_seconds * source_rate))
-        frame_count = max(1, int(max(duration_seconds, 0.45) * source_rate))
-        start_frame = min(start_frame, handle.getnframes())
-        handle.setpos(start_frame)
-        raw = handle.readframes(frame_count)
-    samples = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
-    target_rate = 16_000
-    return resample_mono(samples, source_rate, target_rate), target_rate
+def _merge_refined_with_live(
+    segments,
+    live_entries: list[TranscriptEntry],
+    wall_started_at: datetime,
+) -> list[TranscriptEntry]:
+    entries: list[TranscriptEntry] = []
+    unused = {entry.entry_id for entry in live_entries}
+    for segment in segments:
+        match = _best_live_match(segment, live_entries, unused)
+        if match is not None:
+            unused.discard(match.entry_id)
+            source = match.source
+            role = match.role
+            speaker_id = match.speaker_id
+            entry_id = match.entry_id
+            role_edited = match.role_edited
+        else:
+            nearest = _nearest_live_entry(segment, live_entries)
+            source = nearest.source if nearest is not None else "system"
+            role = nearest.role if nearest is not None else "Собеседник"
+            speaker_id = nearest.speaker_id if nearest is not None else None
+            entry_id = None
+            role_edited = bool(nearest and nearest.role_edited)
+        kwargs = {}
+        if entry_id is not None:
+            kwargs["entry_id"] = entry_id
+        entries.append(
+            TranscriptEntry(
+                source=source,
+                role=role,
+                text=segment.text,
+                start_seconds=segment.start_seconds,
+                duration_seconds=segment.duration_seconds,
+                speaker_id=speaker_id,
+                created_at=wall_started_at
+                + timedelta(seconds=segment.start_seconds),
+                role_edited=role_edited,
+                **kwargs,
+            )
+        )
+    return entries
+
+
+def _best_live_match(segment, entries, unused_ids: set[str]) -> TranscriptEntry | None:
+    candidates = [entry for entry in entries if entry.entry_id in unused_ids]
+    scored = [(_temporal_score(segment, entry), entry) for entry in candidates]
+    plausible = [item for item in scored if item[0] > -2.5]
+    if not plausible:
+        return None
+    return max(plausible, key=lambda item: item[0])[1]
+
+
+def _nearest_live_entry(segment, entries) -> TranscriptEntry | None:
+    if not entries:
+        return None
+    return max(entries, key=lambda entry: _temporal_score(segment, entry))
+
+
+def _temporal_score(segment, entry: TranscriptEntry) -> float:
+    segment_end = segment.start_seconds + max(segment.duration_seconds, 0.01)
+    entry_end = entry.start_seconds + max(entry.duration_seconds, 0.01)
+    overlap = max(
+        0.0,
+        min(segment_end, entry_end) - max(segment.start_seconds, entry.start_seconds),
+    )
+    segment_center = (segment.start_seconds + segment_end) / 2
+    entry_center = (entry.start_seconds + entry_end) / 2
+    return overlap * 10.0 - abs(segment_center - entry_center)
+
+
+def _write_masked_wave(
+    source: Path,
+    destination: Path,
+    ranges: list[tuple[float, float]],
+) -> None:
+    with wave.open(str(source), "rb") as reader:
+        if reader.getnchannels() != 1 or reader.getsampwidth() != 2:
+            raise RuntimeError("Ожидалась монофоническая WAV-дорожка PCM 16 бит")
+        sample_rate = reader.getframerate()
+        intervals = [
+            (
+                max(0, int(start * sample_rate)),
+                max(0, int((start + max(duration, 0.01)) * sample_rate)),
+            )
+            for start, duration in ranges
+        ]
+        with wave.open(str(destination), "wb") as writer:
+            writer.setparams(reader.getparams())
+            frame_position = 0
+            while True:
+                raw = reader.readframes(sample_rate)
+                if not raw:
+                    break
+                samples = np.frombuffer(raw, dtype="<i2").copy()
+                chunk_end = frame_position + samples.size
+                for start, end in intervals:
+                    local_start = max(0, start - frame_position)
+                    local_end = min(samples.size, end - frame_position)
+                    if local_start < local_end:
+                        samples[local_start:local_end] = 0
+                writer.writeframes(samples.tobytes())
+                frame_position = chunk_end
