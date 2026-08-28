@@ -68,7 +68,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.settings = load_settings()
         self.dictionary_manager = DictionaryManager()
-        self.preloaded_models: dict[str, LocalWhisper] = {}
+        self.preloaded_live_models: dict[str, LocalWhisper] = {}
+        self.preloaded_refinement_models: dict[str, LocalWhisper] = {}
         self.preloaded_speaker_clusterer: OnlineSpeakerClusterer | None = None
         self.pipeline: MeetingPipeline | None = None
         self.last_session: Path | None = None
@@ -217,6 +218,10 @@ class MainWindow(QMainWindow):
         )
         for model, label in model_options:
             self.model_combo.addItem(label, model)
+        self.model_combo.setToolTip(
+            "Без NVIDIA CUDA тяжёлые модели живой записи автоматически "
+            "заменяются на base; итоговая модель не изменяется"
+        )
         selected_model = self.model_combo.findData(self.settings.whisper_model)
         self.model_combo.setCurrentIndex(max(0, selected_model))
         self.model_combo.currentIndexChanged.connect(
@@ -519,11 +524,10 @@ class MainWindow(QMainWindow):
             "ru",
             [],
             self.bridge.status.emit,
+            realtime=True,
         )
         refiner = (
-            transcriber
-            if prepare_refinement and refinement_model == model_name
-            else LocalWhisper(
+            LocalWhisper(
                 refinement_model,
                 model_cache_dir(),
                 "ru",
@@ -557,17 +561,28 @@ class MainWindow(QMainWindow):
 
     def _model_ready(self, payload: object) -> None:
         model_name, transcriber, refinement_model, refiner, speaker_model = payload
-        self.preloaded_models[model_name] = transcriber
+        effective_live_model = transcriber.effective_model_name
+        self.preloaded_live_models[effective_live_model] = transcriber
         if refiner is not None:
-            self.preloaded_models[refinement_model] = refiner
+            self.preloaded_refinement_models[refinement_model] = refiner
         self.preloaded_speaker_clusterer = speaker_model
+        if effective_live_model != model_name:
+            effective_index = self.model_combo.findData(effective_live_model)
+            if effective_index >= 0:
+                self.model_combo.setCurrentIndex(effective_index)
         self.model_combo.setEnabled(True)
         self.download_model_button.setEnabled(True)
         self.start_button.setEnabled(True)
         self._model_selection_changed(str(self.model_combo.currentData()))
-        self._set_status(
-            "Модели распознавания и разделения голосов готовы"
-        )
+        if effective_live_model != model_name:
+            self._set_status(
+                f"Для живой записи выбрана {effective_live_model}; "
+                f"{refinement_model} сохранена для итогового уточнения"
+            )
+        else:
+            self._set_status(
+                "Модели распознавания и разделения голосов готовы"
+            )
 
     def _model_failed(self, message: str) -> None:
         self.model_combo.setEnabled(True)
@@ -583,10 +598,13 @@ class MainWindow(QMainWindow):
             self.download_model_button.setText("↓  Подготовить локальные модели")
 
     def _models_prepared(self) -> bool:
-        live_ready = str(self.model_combo.currentData()) in self.preloaded_models
+        live_ready = (
+            str(self.model_combo.currentData()) in self.preloaded_live_models
+        )
         refinement_ready = (
             not self.refine_after_recording.isChecked()
-            or str(self.refinement_combo.currentData()) in self.preloaded_models
+            or str(self.refinement_combo.currentData())
+            in self.preloaded_refinement_models
         )
         return (
             live_ready
@@ -646,10 +664,12 @@ class MainWindow(QMainWindow):
             active_dictionaries, extra_terms
         )
         pipeline_settings = replace(self.settings, glossary=combined_terms)
-        preloaded = self.preloaded_models.get(self.settings.whisper_model)
+        preloaded = self.preloaded_live_models.get(self.settings.whisper_model)
         if preloaded:
             preloaded.glossary = combined_terms
-        refiner = self.preloaded_models.get(self.settings.refinement_model)
+        refiner = self.preloaded_refinement_models.get(
+            self.settings.refinement_model
+        )
         if refiner:
             refiner.glossary = combined_terms
         if self.preloaded_speaker_clusterer:

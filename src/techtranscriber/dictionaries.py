@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .config import app_data_dir, default_output_root
 
-MAX_PROMPT_TERMS = 300
+MAX_PROMPT_TERMS = 350
 
 LEGACY_DEFAULT_HASHES = {
     "01_Общие_IT_и_платформы.txt": "8ca6201a5ee5b6d1fbfffebf506338e34a6469b2793104283baaba96ccef619f",

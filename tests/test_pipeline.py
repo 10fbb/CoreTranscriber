@@ -6,6 +6,7 @@ import unittest
 import wave
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
@@ -13,7 +14,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from techtranscriber.models import AppSettings, TranscriptEntry, Utterance
+from techtranscriber.models import AppSettings, AudioPacket, TranscriptEntry, Utterance
 from techtranscriber.pipeline import MeetingPipeline, _write_masked_wave
 from techtranscriber.transcriber import TimedText
 
@@ -65,6 +66,38 @@ class _Writer:
 
 
 class PipelineTests(unittest.TestCase):
+    def test_capture_callback_only_queues_audio_work(self) -> None:
+        with tempfile.TemporaryDirectory() as temp, patch(
+            "techtranscriber.pipeline.model_cache_dir", return_value=Path(temp)
+        ):
+            pipeline = MeetingPipeline(
+                AppSettings(output_root=Path(temp)),
+                "Асинхронное аудио",
+                lambda _: None,
+                lambda _: None,
+                lambda _: None,
+                transcriber=_Transcriber(),
+            )
+            written = []
+            accepted = []
+            pipeline._writer = SimpleNamespace(write_audio=written.append)
+            pipeline._segmenters = {
+                "microphone": SimpleNamespace(accept=accepted.append)
+            }
+            pipeline._running = True
+            packet = AudioPacket(
+                "microphone", np.ones(2_400, dtype=np.float32), 48_000, 1.0
+            )
+
+            pipeline._on_packet(packet)
+
+            self.assertEqual(written, [])
+            self.assertEqual(accepted, [])
+            pipeline._audio_queue.put(None)
+            pipeline._audio_loop()
+            self.assertEqual(written, [packet])
+            self.assertEqual(accepted, [packet])
+
     def test_manual_text_interval_is_silenced_for_refinement(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             source = Path(temp) / "meeting_audio.wav"
@@ -99,21 +132,21 @@ class PipelineTests(unittest.TestCase):
                 errors.append,
                 transcriber=_Transcriber(),
             )
-            utterance = Utterance(
-                "system",
-                np.ones(16_000, dtype=np.float32),
-                16_000,
-                0.0,
-                1.0,
-            )
-
-            for _ in range(250):
+            for index in range(250):
+                utterance = Utterance(
+                    "system",
+                    np.ones(16_000, dtype=np.float32),
+                    16_000,
+                    float(index),
+                    1.0,
+                )
                 pipeline._enqueue(utterance)
 
             self.assertEqual(pipeline._queue.qsize(), 250)
             self.assertEqual(errors, [])
             self.assertEqual(len(statuses), 1)
-            self.assertIn("аудио сохраняется", statuses[0])
+            self.assertIn("Аудио записывается без пропусков", statuses[0])
+            self.assertIn("отстаёт примерно на 20 с", statuses[0])
 
     def test_offline_small_refinement_replaces_live_entries_after_success(self) -> None:
         statuses: list[str] = []

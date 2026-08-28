@@ -23,6 +23,8 @@ REFINEMENT_OPTIONS = {
     "turbo": {"beam_size": 1, "batch_size": 4},
     "medium": {"beam_size": 2, "batch_size": 4},
 }
+
+
 class MeetingPipeline:
     BACKLOG_WARNING_UTTERANCES = 20
     BACKLOG_STATUS_INTERVAL_SECONDS = 30.0
@@ -53,23 +55,29 @@ class MeetingPipeline:
             settings.language,
             settings.glossary,
             on_status,
+            realtime=True,
         )
         self._refiner = refiner
         self._clusterer = clusterer or OnlineSpeakerClusterer(
             model_cache_dir(), settings.speaker_threshold, on_status=on_status
         )
         self._speaker_names: dict[str, str] = {}
-        # Audio is always written to disk first. The in-memory queue is deliberately
-        # unbounded so a temporary CPU slowdown never discards transcript segments.
+        # Capture callbacks only enqueue packets. Both queues are deliberately
+        # unbounded so a temporary CPU or disk slowdown never discards audio or text.
         self._queue: queue.Queue[Utterance | None] = queue.Queue()
+        self._audio_queue: queue.Queue[AudioPacket | None] = queue.Queue()
         self._captures: list[CaptureWorker] = []
         self._segmenters: dict[AudioSource, SpeechSegmenter] = {}
         self._processor: threading.Thread | None = None
+        self._audio_processor: threading.Thread | None = None
         self._writer: SessionWriter | None = None
         self._running = False
         self._started_at = 0.0
         self._wall_started_at = datetime.now()
         self._last_backlog_status_at = 0.0
+        self._processed_until_seconds = 0.0
+        self._latest_enqueued_seconds = 0.0
+        self._backlog_active = False
         self._refinement_cancel = threading.Event()
 
     @property
@@ -109,6 +117,10 @@ class MeetingPipeline:
                 CaptureWorker("system", loopback, self._on_packet, self._on_capture_error),
             ]
             self._running = True
+            self._audio_processor = threading.Thread(
+                target=self._audio_loop, name="audio-processing", daemon=True
+            )
+            self._audio_processor.start()
             self._processor = threading.Thread(
                 target=self._process_loop, name="transcription", daemon=True
             )
@@ -118,6 +130,14 @@ class MeetingPipeline:
             self.on_status("Запись началась: микрофон и звук приложений подключены")
         except Exception:
             self._running = False
+            for worker in self._captures:
+                worker.stop()
+            for worker in self._captures:
+                if worker.is_alive():
+                    worker.join(timeout=3.0)
+            if self._audio_processor and self._audio_processor.is_alive():
+                self._audio_queue.put(None)
+                self._audio_processor.join()
             if self._writer:
                 self._writer.close()
             raise
@@ -131,6 +151,9 @@ class MeetingPipeline:
             worker.stop()
         for worker in self._captures:
             worker.join(timeout=3.0)
+        self._audio_queue.put(None)
+        if self._audio_processor:
+            self._audio_processor.join()
         for segmenter in self._segmenters.values():
             segmenter.flush()
         self._queue.put(None)
@@ -178,13 +201,31 @@ class MeetingPipeline:
     def _on_packet(self, packet: AudioPacket) -> None:
         if not self._running:
             return
-        if self._writer:
-            self._writer.write_audio(packet)
-        self._segmenters[packet.source].accept(packet)
+        self._audio_queue.put_nowait(packet)
+
+    def _audio_loop(self) -> None:
+        """Keep capture callbacks short; mixing and segmentation run separately."""
+        while True:
+            packet = self._audio_queue.get()
+            if packet is None:
+                return
+            try:
+                if self._writer:
+                    self._writer.write_audio(packet)
+                self._segmenters[packet.source].accept(packet)
+            except Exception as exc:
+                self.on_error(f"Ошибка обработки аудио: {exc}")
 
     def _enqueue(self, utterance: Utterance) -> None:
         self._queue.put_nowait(utterance)
+        self._latest_enqueued_seconds = max(
+            self._latest_enqueued_seconds,
+            utterance.start_seconds + utterance.duration_seconds,
+        )
         pending = self._queue.qsize()
+        delay = max(
+            0.0, self._latest_enqueued_seconds - self._processed_until_seconds
+        )
         now = time.monotonic()
         if (
             pending >= self.BACKLOG_WARNING_UTTERANCES
@@ -192,9 +233,10 @@ class MeetingPipeline:
             >= self.BACKLOG_STATUS_INTERVAL_SECONDS
         ):
             self._last_backlog_status_at = now
+            self._backlog_active = True
             self.on_status(
-                "Распознавание немного отстаёт; аудио сохраняется, "
-                f"в очереди {pending} фрагментов"
+                "Аудио записывается без пропусков; живая стенограмма отстаёт "
+                f"примерно на {_duration_label(delay)}, в очереди {pending} фрагментов"
             )
 
     def _process_loop(self) -> None:
@@ -204,7 +246,19 @@ class MeetingPipeline:
                 utterance = self._queue.get()
                 if utterance is None:
                     break
-                self._process_utterance(utterance)
+                try:
+                    self._process_utterance(utterance)
+                finally:
+                    self._processed_until_seconds = max(
+                        self._processed_until_seconds,
+                        utterance.start_seconds + utterance.duration_seconds,
+                    )
+                    if self._backlog_active and self._queue.qsize() < 5:
+                        self._backlog_active = False
+                        self.on_status(
+                            "Живая стенограмма догнала запись; аудио сохраняется "
+                            "без пропусков"
+                        )
         except Exception as exc:
             self.on_error(f"Ошибка локального распознавания: {exc}")
 
@@ -428,3 +482,13 @@ def _write_masked_wave(
                         samples[local_start:local_end] = 0
                 writer.writeframes(samples.tobytes())
                 frame_position = chunk_end
+
+
+def _duration_label(seconds: float) -> str:
+    total = max(1, round(seconds))
+    if total < 60:
+        return f"{total} с"
+    minutes, remainder = divmod(total, 60)
+    if remainder == 0:
+        return f"{minutes} мин"
+    return f"{minutes} мин {remainder} с"

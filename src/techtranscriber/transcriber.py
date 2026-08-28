@@ -1,16 +1,29 @@
 from __future__ import annotations
 
 import os
+import re
 import threading
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
-MAX_HOTWORDS = 300
+MAX_HOTWORDS = 350
 MAX_HOTWORD_TOKENS = 220
+MAX_LIVE_HOTWORDS = 350
+MAX_LIVE_HOTWORD_TOKENS = 220
 DEFAULT_REFINEMENT_BATCH_SIZE = 4
+LIVE_VAD_PARAMETERS = {
+    "threshold": 0.6,
+    "min_speech_duration_ms": 250,
+    "min_silence_duration_ms": 450,
+    "speech_pad_ms": 180,
+}
+LIVE_NO_SPEECH_THRESHOLD = 0.65
+LIVE_LOG_PROB_THRESHOLD = -1.15
+LIVE_COMPRESSION_RATIO_THRESHOLD = 2.2
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,12 +53,15 @@ class LocalWhisper:
         language: str = "ru",
         glossary: list[str] | None = None,
         on_status: Callable[[str], None] | None = None,
+        realtime: bool = False,
     ) -> None:
         self.model_name = model_name
+        self.effective_model_name = model_name
         self.cache_dir = cache_dir
         self.language = language
         self.glossary = glossary or []
         self.on_status = on_status or (lambda _: None)
+        self.realtime = realtime
         self._model = None
         self._lock = threading.Lock()
 
@@ -55,12 +71,22 @@ class LocalWhisper:
         with self._lock:
             if self._model is not None:
                 return
-            self.on_status(f"Загрузка модели Whisper {self.model_name}…")
             try:
                 import torch
                 from faster_whisper import WhisperModel
 
                 use_cuda = bool(torch.cuda.is_available())
+                self.effective_model_name = _effective_model_name(
+                    self.model_name, use_cuda, self.realtime
+                )
+                if self.effective_model_name != self.model_name:
+                    self.on_status(
+                        "Для живой записи без отставания на CPU используется "
+                        f"модель {self.effective_model_name} вместо {self.model_name}"
+                    )
+                self.on_status(
+                    f"Загрузка модели Whisper {self.effective_model_name}…"
+                )
                 device = "cuda" if use_cuda else "cpu"
                 compute_type = "float16" if use_cuda else "int8"
                 model_options = {}
@@ -68,7 +94,7 @@ class LocalWhisper:
                     model_options["cpu_threads"] = recommended_cpu_threads()
                     model_options["num_workers"] = 1
                 self._model = WhisperModel(
-                    self.model_name,
+                    self.effective_model_name,
                     device=device,
                     compute_type=compute_type,
                     download_root=str(self.cache_dir / "whisper"),
@@ -81,7 +107,7 @@ class LocalWhisper:
                     else f", {model_options['cpu_threads']} потоков, int8"
                 )
                 self.on_status(
-                    f"Whisper готов: {self.model_name}, {target}{detail}"
+                    f"Whisper готов: {self.effective_model_name}, {target}{detail}"
                 )
             except Exception:
                 self._model = None
@@ -89,7 +115,6 @@ class LocalWhisper:
 
     def transcribe(self, samples: np.ndarray) -> str:
         self.load()
-        prompt = self._prompt()
         segments, _ = self._model.transcribe(
             np.asarray(samples, dtype=np.float32),
             language=self.language,
@@ -97,12 +122,26 @@ class LocalWhisper:
             best_of=1,
             temperature=0.0,
             condition_on_previous_text=False,
-            initial_prompt=prompt or None,
-            hotwords=self._hotwords() or None,
+            initial_prompt=None,
+            hotwords=self._hotwords(
+                max_terms=MAX_LIVE_HOTWORDS,
+                max_tokens=MAX_LIVE_HOTWORD_TOKENS,
+            )
+            or None,
             without_timestamps=True,
-            vad_filter=False,
+            vad_filter=True,
+            vad_parameters=LIVE_VAD_PARAMETERS,
+            no_speech_threshold=LIVE_NO_SPEECH_THRESHOLD,
+            log_prob_threshold=LIVE_LOG_PROB_THRESHOLD,
+            compression_ratio_threshold=LIVE_COMPRESSION_RATIO_THRESHOLD,
+            repetition_penalty=1.08,
+            no_repeat_ngram_size=3,
         )
-        parts = [segment.text.strip() for segment in segments if segment.text.strip()]
+        parts = [
+            segment.text.strip()
+            for segment in segments
+            if segment.text.strip() and _is_reliable_segment(segment)
+        ]
         return " ".join(parts).strip()
 
     def transcribe_file(
@@ -142,7 +181,7 @@ class LocalWhisper:
             if cancel_event and cancel_event.is_set():
                 raise TranscriptionCancelled("уточнение отменено")
             text = segment.text.strip()
-            if not text:
+            if not text or not _is_reliable_segment(segment):
                 continue
             start = max(0.0, float(segment.start))
             end = max(start, float(segment.end))
@@ -156,9 +195,14 @@ class LocalWhisper:
             "продуктов, систем, протоколов, аббревиатур и англоязычных технологий."
         )
 
-    def _hotwords(self) -> str:
+    def _hotwords(
+        self,
+        *,
+        max_terms: int = MAX_HOTWORDS,
+        max_tokens: int = MAX_HOTWORD_TOKENS,
+    ) -> str:
         terms = [term.strip() for term in self.glossary if term.strip()][
-            :MAX_HOTWORDS
+            :max_terms
         ]
         tokenizer = getattr(self._model, "hf_tokenizer", None)
         if tokenizer is None:
@@ -171,9 +215,58 @@ class LocalWhisper:
         for term in terms:
             candidate = ", ".join([*selected, term])
             token_count = len(tokenizer.encode(" " + candidate).ids)
-            if token_count <= MAX_HOTWORD_TOKENS:
+            if token_count <= max_tokens:
                 selected.append(term)
         return ", ".join(selected)
+
+
+def _effective_model_name(
+    requested: str, use_cuda: bool, realtime: bool
+) -> str:
+    if realtime and not use_cuda and requested not in {"tiny", "base"}:
+        return "base"
+    return requested
+
+
+def _is_reliable_segment(segment) -> bool:
+    text = str(getattr(segment, "text", "")).strip()
+    if not text or is_repetitive_text(text):
+        return False
+
+    no_speech = _optional_float(getattr(segment, "no_speech_prob", None))
+    avg_logprob = _optional_float(getattr(segment, "avg_logprob", None))
+    compression = _optional_float(getattr(segment, "compression_ratio", None))
+    if (
+        no_speech is not None
+        and no_speech >= LIVE_NO_SPEECH_THRESHOLD
+        and (avg_logprob is None or avg_logprob < -0.6)
+    ):
+        return False
+    if avg_logprob is not None and avg_logprob < LIVE_LOG_PROB_THRESHOLD:
+        return False
+    if compression is not None and compression > LIVE_COMPRESSION_RATIO_THRESHOLD:
+        return False
+    return True
+
+
+def is_repetitive_text(text: str) -> bool:
+    """Reject long loops such as «агент, агент, агент…» without harming speech."""
+    words = re.findall(r"[0-9a-zа-яё]+", text.casefold())
+    if len(words) < 6:
+        return False
+    counts = Counter(words)
+    if max(counts.values()) / len(words) >= 0.6:
+        return True
+    if len(words) >= 9 and len(counts) / len(words) <= 0.3:
+        return True
+    return False
+
+
+def _optional_float(value) -> float | None:
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 class StubWhisper:
